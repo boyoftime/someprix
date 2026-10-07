@@ -502,8 +502,8 @@ export function ServerPane({
               type="button"
               className="icon-btn"
               onClick={() => openTerminal(host.id)}
-              aria-label="Terminal"
-              data-tip="Terminal"
+              aria-label="SSH Terminal"
+              data-tip="SSH Terminal"
             >
               <SquareTerminal size={15} strokeWidth={1.75} />
             </button>

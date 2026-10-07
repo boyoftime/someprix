@@ -2910,6 +2910,7 @@ input::-ms-clear {
 }
 
 .term-page[hidden],
+.term-views[hidden],
 .term-view[hidden] {
   display: none;
 }
@@ -2981,18 +2982,6 @@ input::-ms-clear {
   scrollbar-width: none;
 }
 
-.term-empty {
-  position: absolute;
-  inset: 0;
-}
-
-.term-hosts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 6px;
-}
 
 /* ---------- Sync: folder watch status ---------- */
 
@@ -3181,4 +3170,162 @@ input::-ms-clear {
   font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- Terminal: pick a host (New tab) ---------- */
+
+.pick {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-height: 0;
+  padding: 56px 24px 32px;
+  overflow: auto;
+}
+
+.pick-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  width: min(640px, 100%);
+  height: 46px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--text-muted);
+}
+
+.pick-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.pick-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14.5px;
+}
+
+.pick-card {
+  flex: none;
+  width: min(640px, 100%);
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sidebar);
+}
+
+.pick-group + .pick-group {
+  margin-top: 6px;
+}
+
+.pick-title {
+  margin: 8px 10px 6px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 52px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.pick-row[aria-selected="true"] {
+  background: var(--raised);
+}
+
+.pick-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.pick-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pick-name,
+.pick-address {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-name {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.pick-address {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Enter opens the highlighted host. */
+.pick-enter {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border-radius: 5px;
+  background: var(--raised-hover);
+  color: var(--text-muted);
+  opacity: 0;
+}
+
+.pick-row[aria-selected="true"] .pick-enter {
+  opacity: 1;
+}
+
+.pick-new {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 46px;
+  margin-top: 6px;
+  padding: 0 18px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 650;
+}
+
+.pick-new:hover {
+  color: var(--text);
+}
+
+.pick-empty {
+  margin: 14px 12px;
+  color: var(--text-muted);
 }

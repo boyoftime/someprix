@@ -51,7 +51,7 @@ Your computer on the left, the server on the right. Drag files across to upload 
   <img src="docs/screenshots/sftp-light.png" alt="SFTP: this computer and the server side by side" />
 </picture>
 
-### Terminal: click a server, you're in
+### SSH Terminal: click a server, you're in
 
 Click any saved server and a terminal opens already logged in. Open several tabs, use colours, `nano`, `htop` or `vim`, and copy and paste with Ctrl+C / Ctrl+V. If the connection drops, press Enter to reconnect.
 

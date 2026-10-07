@@ -20,7 +20,7 @@ const ITEMS: { page: Page; label: string; Icon: typeof Server }[] = [
   { page: "sync", label: "Sync", Icon: ArrowLeftRight },
   { page: "sftp", label: "SFTP", Icon: FolderUp },
   { page: "hosts", label: "Hosts", Icon: Server },
-  { page: "terminal", label: "Terminal", Icon: SquareTerminal },
+  { page: "terminal", label: "SSH Terminal", Icon: SquareTerminal },
   { page: "editor", label: "Editor", Icon: FileCode },
 ];
 

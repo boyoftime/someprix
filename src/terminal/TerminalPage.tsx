@@ -1,8 +1,9 @@
-import { useEffect, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Plus, Server, SquareTerminal, X } from "lucide-react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Plus, SquareTerminal, X } from "lucide-react";
 import { useAppData } from "../state/AppData";
 import { useTerminals, type Session } from "./TerminalProvider";
 import { TerminalView } from "./TerminalView";
+import { HostPick } from "./HostPick";
 
 const STATUS_LABEL: Record<Session["status"], string> = {
   connecting: "Connecting",
@@ -14,7 +15,15 @@ const STATUS_LABEL: Record<Session["status"], string> = {
 export function TerminalPage({ shown }: { shown: boolean }) {
   const { sessions, activeKey, open, close, activate } = useTerminals();
   const { hosts } = useAppData();
-  const active = sessions.find((s) => s.key === activeKey) ?? null;
+  // A "New tab" showing the host picker, opened with +.
+  const [picking, setPicking] = useState(false);
+  // Opening or switching to a terminal (here or from another page) leaves the picker.
+  useEffect(() => setPicking(false), [activeKey]);
+  const choosing = picking || sessions.length === 0;
+  const pickHost = (hostId: string) => {
+    setPicking(false);
+    open(hostId, true);
+  };
 
   const hostOf = (session: Session) => hosts.find((h) => h.id === session.hostId);
   /** The host's name, numbered when it has more than one tab. */
@@ -35,6 +44,7 @@ export function TerminalPage({ shown }: { shown: boolean }) {
     const onKey = (event: KeyboardEvent) => {
       if (!event.ctrlKey || event.key !== "Tab") return;
       event.preventDefault();
+      setPicking(false);
       const at = sessions.findIndex((s) => s.key === activeKey);
       activate(sessions[(at + (event.shiftKey ? -1 : 1) + sessions.length) % sessions.length].key);
     };
@@ -52,18 +62,21 @@ export function TerminalPage({ shown }: { shown: boolean }) {
   };
 
   return (
-    <section className="term-page" hidden={!shown} aria-label="Terminal">
+    <section className="term-page" hidden={!shown} aria-label="SSH Terminal">
       {sessions.length > 0 && (
         <div className="editor-tabs term-tabs" role="tablist" aria-label="Terminals">
           {sessions.map((session) => (
             <div
               key={session.key}
               role="tab"
-              tabIndex={session.key === activeKey ? 0 : -1}
+              tabIndex={!picking && session.key === activeKey ? 0 : -1}
               className="editor-tab"
-              aria-selected={session.key === activeKey}
+              aria-selected={!picking && session.key === activeKey}
               data-tip={tip(session)}
-              onClick={() => activate(session.key)}
+              onClick={() => {
+                setPicking(false);
+                activate(session.key);
+              }}
               onKeyDown={(event) => onTabKey(event, session)}
               onMouseDown={(event) => event.button === 1 && event.preventDefault()}
               onAuxClick={(event) => event.button === 1 && close(session.key)}
@@ -84,46 +97,41 @@ export function TerminalPage({ shown }: { shown: boolean }) {
               </button>
             </div>
           ))}
-          {active && (
-            <button
-              type="button"
-              className="icon-btn term-new"
-              onClick={() => open(active.hostId, true)}
-              aria-label="New terminal"
-              data-tip="New terminal"
-            >
-              <Plus size={16} strokeWidth={2} />
-            </button>
+          {picking && (
+            <div role="tab" tabIndex={0} className="editor-tab" aria-selected="true">
+              <SquareTerminal size={14} strokeWidth={1.75} className="editor-tab-icon" />
+              <span className="editor-tab-name">New tab</span>
+              <button
+                type="button"
+                className="editor-tab-close"
+                tabIndex={-1}
+                aria-label="Close new tab"
+                onClick={() => setPicking(false)}
+              >
+                <X size={14} strokeWidth={2} />
+              </button>
+            </div>
           )}
+          <button
+            type="button"
+            className="icon-btn term-new"
+            onClick={() => setPicking(true)}
+            aria-label="New tab"
+            data-tip="New tab"
+          >
+            <Plus size={16} strokeWidth={2} />
+          </button>
         </div>
       )}
 
-      <div className="term-views">
+      <div className="term-views" hidden={choosing}>
         {sessions.map((session) => (
-          <TerminalView key={session.key} session={session} active={session.key === activeKey} shown={shown} />
+          <TerminalView key={session.key} session={session} active={!choosing && session.key === activeKey} shown={shown} />
         ))}
       </div>
 
-      {sessions.length === 0 && (
-        <div className="pane-empty term-empty">
-          <SquareTerminal size={30} strokeWidth={1.5} />
-          <h2>No terminals</h2>
-          {hosts.length ? (
-            <>
-              <p>Pick a host</p>
-              <div className="term-hosts">
-                {hosts.map((host) => (
-                  <button key={host.id} type="button" className="btn" onClick={() => open(host.id)}>
-                    <Server size={15} strokeWidth={1.75} />
-                    {host.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p>Add a host in Hosts</p>
-          )}
-        </div>
+      {choosing && (
+        <HostPick shown={shown} onPick={pickHost} onCancel={sessions.length ? () => setPicking(false) : undefined} />
       )}
     </section>
   );

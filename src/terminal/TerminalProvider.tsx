@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { markRecent } from "./recent";
 
 /** One terminal tab: a shell on a host, and where its connection stands. */
 export type Session = {
@@ -53,6 +54,7 @@ export function TerminalProvider({ onShow, children }: { onShow: () => void; chi
     return {
       open: (hostId: string, fresh = false) => {
         showRef.current();
+        markRecent(hostId);
         const running = !fresh && current.current.find((s) => s.hostId === hostId && s.status !== "ended");
         if (running) {
           activate(running.key);
