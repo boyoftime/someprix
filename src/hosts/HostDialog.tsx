@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Dialog } from "../ui/Dialog";
+import { PasswordInput } from "../ui/PasswordInput";
 import { errorMessage, useAppData } from "../state/AppData";
 import type { AuthMethod, Host } from "../lib/api";
 
@@ -143,8 +144,7 @@ export function HostDialog({ host, onClose, onSaved }: HostDialogProps) {
         {auth === "password" ? (
           <label className="field">
             <span>Password</span>
-            <input
-              type="password"
+            <PasswordInput
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
               placeholder={editing ? "Unchanged" : ""}
@@ -170,8 +170,7 @@ export function HostDialog({ host, onClose, onSaved }: HostDialogProps) {
             </div>
             <label className="field">
               <span>Passphrase</span>
-              <input
-                type="password"
+              <PasswordInput
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
                 placeholder={editing ? "Unchanged" : "Optional"}
