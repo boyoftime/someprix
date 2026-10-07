@@ -79,6 +79,9 @@ const encoder = new TextEncoder();
 function folderIn(text: string) {
   return /^[^\s@]+@[^\s:]+:\s?(~[^\s#$]*|\/[^\s#$]*)/.exec(text.trim())?.[1] ?? null;
 }
+
+/** A shell prompt line ("root@vps:~/apps# ") and whatever is typed after it. */
+const PROMPT_LINE = /^[^\s@]+@[^\s:]+:\s?(?:~[^\s#$]*|\/[^\s#$]*)[#$] (.*)$/;
 /** Dim text, for the lines the app itself writes into the terminal. */
 const note = (text: string) => `\x1b[2m${text}\x1b[0m`;
 
@@ -136,6 +139,10 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
     let lastDir: string | null = null;
     // Where the next Enter-started session opens (a reconnect that stopped at the login).
     let resumeDir: string | null = null;
+    // The command being typed when the connection dropped: put back at the new prompt, never run.
+    let restoreLine = "";
+    // The last key sent on this line was Enter, so the command may already have run.
+    let submitted = false;
     // Cuts a reconnect wait short (the network came back, or Enter was pressed).
     let retryNow: (() => void) | null = null;
     const typeahead = new TypeAhead(xterm);
@@ -146,6 +153,32 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
     const cursorLine = () => {
       const buffer = xterm.buffer.active;
       return buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? "";
+    };
+    /** What's typed at a shell prompt (a long line's wrapped rows joined); null when not at one. */
+    const typedAtPrompt = () => {
+      const buffer = xterm.buffer.active;
+      if (buffer.type !== "normal") return null;
+      let row = buffer.baseY + buffer.cursorY;
+      let line = buffer.getLine(row);
+      if (!line) return null;
+      let text = line.translateToString(true);
+      while (line.isWrapped && row > 0) {
+        row--;
+        line = buffer.getLine(row);
+        if (!line) break;
+        text = line.translateToString(false) + text;
+      }
+      return PROMPT_LINE.exec(text)?.[1].trimEnd() ?? null;
+    };
+    /** Types `text` at the new shell's prompt once it's there, without pressing Enter. */
+    const putBack = async (text: string) => {
+      for (let waited = 0; waited < 8000 && typedAtPrompt() !== ""; waited += 100) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        if (disposed || phase !== "live") return;
+      }
+      if (typedAtPrompt() !== "") return;
+      submitted = false;
+      void sendKeys(encoder.encode(text));
     };
 
     // Keys go out in order, one call at a time; whatever's typed meanwhile goes in the next one.
@@ -209,6 +242,9 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
     const ended = (how: TerminalEnded) => {
       if (disposed) return;
       remote = null;
+      // A command typed at the prompt but not run yet comes back after reconnecting (read before
+      // rubbing out anything drawn early: that's typed too).
+      if (how.lost) restoreLine = submitted ? "" : (typedAtPrompt() ?? "");
       typeahead.clear();
       if (how.lost) {
         // Tell the rest of the app too, so the file panes start coming back as well.
@@ -235,6 +271,8 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
       if (result === "live") {
         phase = "live";
         live.current.terminals.update(key, { status: "live" });
+        if (restoreLine) void putBack(restoreLine);
+        restoreLine = "";
       } else {
         phase = "ended";
         live.current.terminals.update(key, { status: "ended" });
@@ -261,6 +299,8 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
           if (result === "live") {
             phase = "live";
             live.current.terminals.update(key, { status: "live" });
+            if (restoreLine) void putBack(restoreLine);
+            restoreLine = "";
             return;
           }
         } catch (error) {
@@ -304,11 +344,24 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
       if (phase === "live") {
         // Each command line shows the folder it ran in: remember it for a reconnect.
         if (data.includes("\r")) lastDir = folderIn(cursorLine()) ?? lastDir;
+        submitted = data.includes("\r");
         typeahead.typed(data);
         void sendKeys(encoder.encode(data));
-      } else if (data === "\r") {
-        if (phase === "ended") void start();
-        else if (phase === "reconnecting") retryNow?.();
+      } else if (phase === "reconnecting") {
+        // Enter tries again now; anything typed meanwhile joins the line that comes back.
+        if (data === "\r") {
+          retryNow?.();
+        } else if (data === "\x7f") {
+          if (restoreLine) {
+            restoreLine = restoreLine.slice(0, -1);
+            xterm.write("\b \b");
+          }
+        } else if (/^[\x20-\x7e]+$/.test(data)) {
+          restoreLine += data;
+          xterm.write(note(data));
+        }
+      } else if (data === "\r" && phase === "ended") {
+        void start();
       }
     });
     xterm.onBinary((data) => {
