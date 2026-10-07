@@ -3,6 +3,8 @@
 //
 //   npm run release -- --notes "What changed"    build, then publish v<version> on GitHub
 //   npm run release -- --no-publish              build and write latest.json only
+//   npm run release -- --publish-only --notes …   publish the installer already built (after a
+//                                                 failed upload, say), without building again
 //
 // The version comes from package.json; raise it there, in src-tauri/tauri.conf.json and in
 // src-tauri/Cargo.toml first. Signing uses the private key in keys/someprix.key (kept out of git),
@@ -21,6 +23,7 @@ const option = (name) => {
   return at >= 0 ? args[at + 1] : undefined;
 };
 const publish = !args.includes("--no-publish");
+const buildFirst = !args.includes("--publish-only");
 
 const fail = (message) => {
   console.error(`\nRelease stopped: ${message}`);
@@ -43,21 +46,26 @@ if (!key) fail(`signing key not found in ${keyFiles.join(" or ")}`);
 if (publish) {
   const released = spawnSync("gh", ["release", "view", `v${version}`, "--repo", REPO], { stdio: "ignore" });
   if (released.error) fail("GitHub CLI (gh) not found");
-  if (released.status === 0) fail(`v${version} is already on GitHub; raise the version first`);
+  // Publishing what's already built may finish a release whose upload broke off.
+  if (released.status === 0 && buildFirst) fail(`v${version} is already on GitHub; raise the version first`);
 }
 
-console.log(`Building Someprix ${version}...\n`);
-const build = spawnSync("npm run tauri build", {
-  cwd: root,
-  stdio: "inherit",
-  shell: true,
-  env: {
-    ...process.env,
-    TAURI_SIGNING_PRIVATE_KEY: key,
-    TAURI_SIGNING_PRIVATE_KEY_PASSWORD: process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? "",
-  },
-});
-if (build.status !== 0) fail("build failed");
+if (buildFirst) {
+  console.log(`Building Someprix ${version}...\n`);
+  const build = spawnSync("npm run tauri build", {
+    cwd: root,
+    stdio: "inherit",
+    shell: true,
+    env: {
+      ...process.env,
+      TAURI_SIGNING_PRIVATE_KEY: key,
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? "",
+    },
+  });
+  if (build.status !== 0) fail("build failed");
+} else {
+  console.log(`Publishing the Someprix ${version} installer already built.`);
+}
 
 const name = `Someprix_${version}_x64-setup.exe`;
 const dir = join(root, "src-tauri", "target", "release", "bundle", "nsis");
@@ -90,12 +98,33 @@ if (!publish) {
   process.exit(0);
 }
 
-console.log(`\nPublishing v${version} on GitHub...`);
-const release = spawnSync(
-  "gh",
-  ["release", "create", `v${version}`, installer, latest, "--repo", REPO, "--title", `Someprix ${version}`, "--notes", notes],
-  { cwd: root, stdio: "inherit" },
-);
-if (release.status !== 0) fail("publishing failed");
+// A network hiccup shouldn't sink a release: try a few times. A failed try leaves either no
+// release (gh removes it) or one whose files can simply be uploaded again.
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const TRIES = 4;
+let published = false;
+for (let attempt = 1; attempt <= TRIES && !published; attempt++) {
+  if (attempt > 1) {
+    console.log(`\nTrying again in ${5 * (attempt - 1)} s (${attempt}/${TRIES})...`);
+    pause(5000 * (attempt - 1));
+  }
+  console.log(`\nPublishing v${version} on GitHub...`);
+  const exists = spawnSync("gh", ["release", "view", `v${version}`, "--repo", REPO], { stdio: "ignore" }).status === 0;
+  const step = exists
+    ? spawnSync("gh", ["release", "upload", `v${version}`, installer, latest, "--repo", REPO, "--clobber"], {
+        cwd: root,
+        stdio: "inherit",
+      })
+    : spawnSync(
+        "gh",
+        ["release", "create", `v${version}`, installer, latest, "--repo", REPO, "--title", `Someprix ${version}`, "--notes", notes],
+        { cwd: root, stdio: "inherit" },
+      );
+  published = step.status === 0;
+}
+if (!published) {
+  fail(`publishing failed. The installer is built: when the connection is back, run
+  npm run release -- --publish-only --notes "${notes}"`);
+}
 console.log(`\nReleased: https://github.com/${REPO}/releases/tag/v${version}`);
 console.log("Installed copies will offer this update on their next check.");
