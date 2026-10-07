@@ -107,7 +107,12 @@ export type TextFile = {
 };
 
 /** How a terminal session ended: the shell's exit code, or why it stopped otherwise. */
-export type TerminalEnded = { exitCode: number | null; reason: string | null };
+export type TerminalEnded = {
+  exitCode: number | null;
+  reason: string | null;
+  /** The connection went (the shell didn't exit and nobody closed it). */
+  lost: boolean;
+};
 
 /** A save either wrote the file, or found someone else had changed it since it was opened. */
 export type SaveOutcome = { status: "saved"; version: string } | { status: "changed" };
@@ -170,9 +175,14 @@ export const api = {
   onTransferProgress: (handler: (progress: PushProgress) => void): Promise<UnlistenFn> =>
     listen<PushProgress>("sftp://transfer-progress", (event) => handler(event.payload)),
 
-  /** Opens a shell on a connected host. `output` gets raw bytes, then one TerminalEnded. */
-  openTerminal: (hostId: string, cols: number, rows: number, output: Channel<ArrayBuffer | TerminalEnded>) =>
-    call<number>("terminal_open", { hostId, cols, rows, output }),
+  /** Opens a shell on a connected host, in `startDir` if given. `output` gets raw bytes, then one TerminalEnded. */
+  openTerminal: (
+    hostId: string,
+    cols: number,
+    rows: number,
+    output: Channel<ArrayBuffer | TerminalEnded>,
+    startDir: string | null = null,
+  ) => call<number>("terminal_open", { hostId, cols, rows, output, startDir }),
   writeTerminal: (id: number, data: number[]) => call<void>("terminal_write", { id, data }),
   resizeTerminal: (id: number, cols: number, rows: number) => call<void>("terminal_resize", { id, cols, rows }),
   closeTerminal: (id: number) => call<void>("terminal_close", { id }),

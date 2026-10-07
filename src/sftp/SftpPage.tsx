@@ -26,7 +26,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** Move files between this computer and a server: browse both sides, drag across either way. */
 export function SftpPage() {
-  const { hosts, connected, connect, notify, recordPush } = useAppData();
+  const { hosts, connected, reconnecting, connect, notify, recordPush } = useAppData();
   const [chosenHost, setChosenHost] = useState<string | null>(() => remembered(LAST_HOST));
   const [addingHost, setAddingHost] = useState(false);
   const [remoteDir, setRemoteDir] = useState<string | null>(null);
@@ -154,7 +154,9 @@ export function SftpPage() {
   const uploadBlocker = !host
     ? "No server selected"
     : !isConnected
-      ? "Not connected"
+      ? reconnecting.has(host.id)
+        ? "Reconnecting…"
+        : "Not connected"
       : !remoteDir
         ? "No server folder open"
         : null;

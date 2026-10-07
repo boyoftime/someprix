@@ -14,8 +14,9 @@ use russh::{client, ChannelMsg};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::{sync::mpsc, time::Instant};
 
-/// Output is gathered for this long before it goes to the page, so a burst (a long listing, a
-/// build log) arrives as a few large pieces rather than thousands of tiny ones.
+/// During a burst (a long listing, a build log), output is gathered for this long before it goes to
+/// the page, so it arrives as a few large pieces rather than thousands of tiny ones. Output after a
+/// quiet spell, like the echo of a typed key, goes at once.
 const GATHER: Duration = Duration::from_millis(8);
 /// ...or until this much is waiting.
 const GATHER_MAX: usize = 256 * 1024;
@@ -75,6 +76,8 @@ pub struct Ended {
     exit_code: Option<u32>,
     /// Why it ended, when it wasn't the shell exiting.
     reason: Option<String>,
+    /// The connection went: the shell didn't exit and nobody closed it.
+    lost: bool,
 }
 
 async fn pump(
@@ -83,9 +86,11 @@ async fn pump(
     output: &Channel<InvokeResponseBody>,
 ) -> Ended {
     let (mut read, write) = channel.split();
-    let mut ended = Ended { exit_code: None, reason: None };
+    let mut ended = Ended { exit_code: None, reason: None, lost: false };
+    let mut exited = false;
     let mut gathered: Vec<u8> = Vec::new();
     let mut flush_at = Instant::now();
+    let mut last_flush = Instant::now() - GATHER;
     let flush = |gathered: &mut Vec<u8>| -> bool {
         gathered.is_empty() || output.send(InvokeResponseBody::Raw(std::mem::take(gathered))).is_ok()
     };
@@ -94,16 +99,24 @@ async fn pump(
         tokio::select! {
             message = read.wait() => match message {
                 Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
+                    let quiet = gathered.is_empty() && last_flush.elapsed() >= GATHER;
                     if gathered.is_empty() {
                         flush_at = Instant::now() + GATHER;
                     }
                     gathered.extend_from_slice(&data);
-                    if gathered.len() >= GATHER_MAX && !flush(&mut gathered) {
-                        break;
+                    if quiet || gathered.len() >= GATHER_MAX {
+                        if !flush(&mut gathered) {
+                            break;
+                        }
+                        last_flush = Instant::now();
                     }
                 }
-                Some(ChannelMsg::ExitStatus { exit_status }) => ended.exit_code = Some(exit_status),
+                Some(ChannelMsg::ExitStatus { exit_status }) => {
+                    exited = true;
+                    ended.exit_code = Some(exit_status);
+                }
                 Some(ChannelMsg::ExitSignal { signal_name, .. }) => {
+                    exited = true;
                     ended.reason = Some(format!("Killed by signal {signal_name:?}"));
                 }
                 // The only request that wants a reply is the shell itself.
@@ -118,6 +131,7 @@ async fn pump(
                 if !flush(&mut gathered) {
                     break;
                 }
+                last_flush = Instant::now();
             }
             next = input.recv() => match next {
                 Some(Input::Keys(keys)) => {
@@ -137,5 +151,6 @@ async fn pump(
         }
     }
     flush(&mut gathered);
+    ended.lost = !exited && ended.reason.is_none();
     ended
 }

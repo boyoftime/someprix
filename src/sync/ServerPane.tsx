@@ -112,7 +112,7 @@ export function ServerPane({
   fastDelete = false,
   rememberAs,
 }: ServerPaneProps) {
-  const { hosts, connected, connecting, connect, disconnect, homes, refreshConnections, notify, lastPush } =
+  const { hosts, connected, connecting, reconnecting, connect, disconnect, homes, refreshConnections, notify, lastPush } =
     useAppData();
   const openMenu = useContextMenu();
   const dragApi = useDrag();
@@ -123,6 +123,8 @@ export function ServerPane({
   const host = hosts.find((h) => h.id === hostId) ?? null;
   const isConnected = host ? connected.has(host.id) : false;
   const isConnecting = host ? connecting.has(host.id) : false;
+  // The connection dropped and is coming back by itself: the folder keeps showing meanwhile.
+  const isReconnecting = host ? reconnecting.has(host.id) : false;
 
   const [cwd, setCwd] = useState<string | null>(null);
   const [entries, setEntries] = useState<RemoteEntry[] | null>(null);
@@ -159,15 +161,34 @@ export function ServerPane({
   // The remembered folder being reopened, until its listing arrives (it may have gone since).
   const reopening = useRef<string | null>(null);
 
-  // Connected (again): carry on in the folder from last time, else the start folder.
+  // Which host the listing belongs to, to tell switching hosts from a reconnect.
+  const shownHost = useRef<string | null>(null);
+  const cwdRef = useRef(cwd);
+  cwdRef.current = cwd;
+
   useEffect(() => {
+    const id = host?.id ?? null;
+    const sameHost = shownHost.current === id;
+    shownHost.current = id;
+    if (!host || !isConnected) {
+      // Dropped for a moment: keep the folder on screen while the connection comes back.
+      if (sameHost && isReconnecting) return;
+      setEntries(null);
+      clear();
+      setToDelete(null);
+      setCwd(null);
+      return;
+    }
+    // Back after a drop: the folder that's showing simply reloads.
+    if (sameHost && cwdRef.current) return;
+    // Connected: carry on in the folder from last time, else the start folder.
     setEntries(null);
     clear();
     setToDelete(null);
     const last = memoryKey ? remembered(memoryKey) : null;
     reopening.current = last;
-    setCwd(isConnected && host ? (last ?? fallbackDir()) : null);
-  }, [host?.id, isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+    setCwd(last ?? fallbackDir());
+  }, [host?.id, isConnected, isReconnecting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     onCwdChange?.(cwd);
@@ -187,8 +208,15 @@ export function ServerPane({
         previousPaths.current = new Set((entriesRef.current ?? []).map((e) => e.path));
         setEntries(list);
       })
-      .catch((e) => {
+      .catch(async (e) => {
         if (!current) return;
+        // The connection dropped: it comes back by itself, and the folder reloads then.
+        const alive = await api.connected().then((ids) => ids.includes(host.id), () => false);
+        if (!current) return;
+        if (!alive) {
+          void refreshConnections();
+          return;
+        }
         // The folder from last time is gone (or can't be opened): start from the usual place.
         if (reopening.current === cwd && cwd !== fallbackDir()) {
           reopening.current = null;
@@ -197,7 +225,6 @@ export function ServerPane({
           return;
         }
         setError(errorMessage(e));
-        void refreshConnections();
       })
       .finally(() => current && setListing(false));
     return () => {
@@ -350,7 +377,7 @@ export function ServerPane({
     let items: MenuItem[];
     if (!host) {
       items = [{ label: "New host", icon: Plus, onSelect: onAddHost }];
-    } else if (!isConnected) {
+    } else if (!isConnected && !isReconnecting) {
       items = [
         { label: "Connect", icon: Plug, onSelect: () => void connect(host.id), disabled: isConnecting },
         { label: "New host", icon: Plus, onSelect: onAddHost },
@@ -389,7 +416,11 @@ export function ServerPane({
           onAddHost={onAddHost}
         />
       )}
-      {isConnected && <span className="status-dot" aria-label="Connected" data-tip="Connected" />}
+      {isConnected ? (
+        <span className="status-dot" aria-label="Connected" data-tip="Connected" />
+      ) : isReconnecting ? (
+        <span className="status-dot" data-state="reconnecting" aria-label="Reconnecting" data-tip="Reconnecting…" />
+      ) : null}
     </header>
   );
 
@@ -410,7 +441,7 @@ export function ServerPane({
     );
   }
 
-  if (!isConnected) {
+  if (!isConnected && !isReconnecting) {
     return (
       <section className="pane" aria-label="Server" onContextMenu={paneMenu}>
         {head()}

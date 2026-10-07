@@ -22,7 +22,7 @@ type SyncPageProps = {
 };
 
 export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
-  const { project, hosts, connected, connectionsKnown, connecting, connect, setTarget } = useAppData();
+  const { project, hosts, connected, connectionsKnown, connecting, reconnecting, connect, setTarget } = useAppData();
   // The server shown when there's no project to remember it.
   const [looseHostId, setLooseHostId] = useState<string | null>(null);
   const [addingHost, setAddingHost] = useState(false);
@@ -99,7 +99,9 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
   const pushBlocker = !host
     ? "No server selected"
     : !connected.has(host.id)
-      ? "Not connected"
+      ? reconnecting.has(host.id)
+        ? "Reconnecting…"
+        : "Not connected"
       : !destination
         ? "No destination set"
         : null;

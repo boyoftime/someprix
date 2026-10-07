@@ -66,6 +66,9 @@ pub fn describe(error: &dyn std::fmt::Display) -> String {
 #[derive(Default)]
 pub struct Ssh {
     connections: tokio::sync::Mutex<HashMap<String, Arc<Connection>>>,
+    /// One connect at a time per host: a second one (a terminal and the file panes reconnecting
+    /// together) waits, then reuses the connection the first made instead of replacing it.
+    connecting: std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// Extra connections per host, used alongside the main one to move files in parallel.
     lanes: tokio::sync::Mutex<HashMap<String, Vec<Arc<Connection>>>>,
 }
@@ -196,6 +199,8 @@ async fn open(store: &Store, host: &Host) -> Result<Opened, String> {
 
 impl Ssh {
     pub async fn connect(&self, store: &Store, host: &Host) -> Result<ConnectOutcome, String> {
+        let turn = self.connecting.lock().unwrap().entry(host.id.clone()).or_default().clone();
+        let _turn = turn.lock().await;
         // Already connected: reuse it rather than dropping a connection that's in use.
         if let Ok(conn) = self.get(&host.id).await {
             return Ok(ConnectOutcome::Connected { home: conn.home.clone() });
@@ -451,15 +456,33 @@ impl Connection {
     }
 
     /// A login shell on the server with a pseudo-terminal `cols` x `rows`, for a terminal tab.
-    /// The server answers the shell request on the channel itself (Success or Failure).
-    pub async fn open_shell(&self, cols: u32, rows: u32) -> Result<russh::Channel<client::Msg>, String> {
+    /// With `start_dir` (a reconnect), the shell starts in that folder instead of home. The server
+    /// answers the request on the channel itself (Success or Failure).
+    pub async fn open_shell(
+        &self,
+        cols: u32,
+        rows: u32,
+        start_dir: Option<&str>,
+    ) -> Result<russh::Channel<client::Msg>, String> {
         let fail = |e: &dyn std::fmt::Display| format!("Shell failed: {e}");
         let channel = self.handle.channel_open_session().await.map_err(|e| fail(&e))?;
         channel
             .request_pty(false, "xterm-256color", cols, rows, 0, 0, &[])
             .await
             .map_err(|e| fail(&e))?;
-        channel.request_shell(true).await.map_err(|e| fail(&e))?;
+        match start_dir {
+            Some(dir) => {
+                // "~" only expands outside quotes.
+                let target = match dir.strip_prefix('~') {
+                    Some("") => "~".to_string(),
+                    Some(rest) => format!("~/{}", sh_quote(rest.trim_start_matches('/'))),
+                    None => sh_quote(dir),
+                };
+                let command = format!("cd {target} 2>/dev/null; exec \"${{SHELL:-/bin/sh}}\" -l");
+                channel.exec(true, command).await.map_err(|e| fail(&e))?;
+            }
+            None => channel.request_shell(true).await.map_err(|e| fail(&e))?,
+        }
         Ok(channel)
     }
 

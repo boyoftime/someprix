@@ -12,6 +12,7 @@ import { api, type TerminalEnded } from "../lib/api";
 import { errorMessage, useAppData } from "../state/AppData";
 import { useContextMenu } from "../ui/ContextMenu";
 import { useTerminals, type Session } from "./TerminalProvider";
+import { TypeAhead } from "./typeahead";
 
 /** ANSI colours for each app theme; background, text and cursor come from the app's tokens. */
 const PALETTES: Record<"dark" | "light", ITheme> = {
@@ -73,6 +74,11 @@ function themeNow(): ITheme {
 }
 
 const encoder = new TextEncoder();
+
+/** The folder in a prompt or window title, like "root@vps:~/apps# ls" or "root@vps: ~/apps". */
+function folderIn(text: string) {
+  return /^[^\s@]+@[^\s:]+:\s?(~[^\s#$]*|\/[^\s#$]*)/.exec(text.trim())?.[1] ?? null;
+}
 /** Dim text, for the lines the app itself writes into the terminal. */
 const note = (text: string) => `\x1b[2m${text}\x1b[0m`;
 
@@ -99,6 +105,8 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
       lineHeight: 1.15,
       cursorBlink: true,
       cursorStyle: "bar",
+      // A touch bolder than the default hairline.
+      cursorWidth: 2,
       scrollback: 10000,
       allowProposedApi: true,
       theme: themeNow(),
@@ -119,12 +127,25 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
     // Lets automated checks read the screen in development builds.
     if (import.meta.env.DEV) Object.assign(screen.current!, { xterm });
 
-    let phase: "idle" | "connecting" | "live" | "ended" = "idle";
+    let phase: "idle" | "connecting" | "live" | "reconnecting" | "ended" = "idle";
     let remote: number | null = null;
     let disposed = false;
+    // Each opened shell gets a number; output from an older one is ignored.
+    let generation = 0;
+    // The folder the shell was in, to carry on there after a reconnect.
+    let lastDir: string | null = null;
+    // Where the next Enter-started session opens (a reconnect that stopped at the login).
+    let resumeDir: string | null = null;
+    // Cuts a reconnect wait short (the network came back, or Enter was pressed).
+    let retryNow: (() => void) | null = null;
+    const typeahead = new TypeAhead(xterm);
     const fitNow = () => {
       const el = screen.current;
       if (el && el.clientWidth > 0 && el.clientHeight > 0) fitter.fit();
+    };
+    const cursorLine = () => {
+      const buffer = xterm.buffer.active;
+      return buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? "";
     };
 
     // Keys go out in order, one call at a time; whatever's typed meanwhile goes in the next one.
@@ -147,47 +168,124 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
       sending = false;
     };
 
-    const end = (how: TerminalEnded) => {
-      if (phase === "ended" || disposed) return;
-      phase = "ended";
+    /** Opens a shell (in `dir`, if given), first replacing a connection that has gone. */
+    const open = async (dir: string | null, quiet: boolean): Promise<"live" | "failed" | "ended"> => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0 || !live.current.connected.has(hostId)) {
+          if (!(await live.current.connect(hostId, quiet))) return "failed";
+        }
+        const token = ++generation;
+        let endedEarly = false;
+        const output = new Channel<ArrayBuffer | TerminalEnded>();
+        output.onmessage = (message) => {
+          if (token !== generation || disposed) return;
+          if (message instanceof ArrayBuffer) {
+            typeahead.received(new Uint8Array(message));
+          } else {
+            endedEarly = remote === null;
+            ended(message);
+          }
+        };
+        try {
+          fitNow();
+          const id = await api.openTerminal(hostId, xterm.cols, xterm.rows, output, dir);
+          if (disposed || token !== generation) {
+            void api.closeTerminal(id);
+            return "ended";
+          }
+          // A server that refuses shells answers at once; that's already been handled.
+          if (endedEarly) return "ended";
+          remote = id;
+          return "live";
+        } catch {
+          // Usually a connection that died while idle: connect again and retry once.
+          await live.current.refreshConnections();
+        }
+      }
+      return "failed";
+    };
+
+    /** A session ended: a lost connection comes back by itself, anything else waits for Enter. */
+    const ended = (how: TerminalEnded) => {
+      if (disposed) return;
       remote = null;
+      typeahead.clear();
+      if (how.lost) {
+        // Tell the rest of the app too, so the file panes start coming back as well.
+        void live.current.refreshConnections();
+        void reconnect();
+        return;
+      }
+      phase = "ended";
       live.current.terminals.update(key, { status: "ended" });
       const why = how.reason ?? (how.exitCode !== null && how.exitCode !== 0 ? `exit ${how.exitCode}` : null);
       xterm.write(`\r\n${note(`[Session ended${why ? `: ${why}` : ""}] Press Enter to reconnect`)}\r\n`);
     };
 
     const start = async () => {
-      if (phase === "connecting" || phase === "live") return;
+      if (phase !== "idle" && phase !== "ended") return;
       phase = "connecting";
       live.current.terminals.update(key, { status: "connecting" });
       const host = live.current.hosts.find((h) => h.id === hostId);
       xterm.write(note(`Connecting to ${host ? `${host.username}@${host.host}` : "server"}…`) + "\r\n");
-      if (!live.current.connected.has(hostId) && !(await live.current.connect(hostId))) {
-        end({ exitCode: null, reason: "not connected" });
-        return;
-      }
-      const output = new Channel<ArrayBuffer | TerminalEnded>();
-      output.onmessage = (message) => {
-        if (message instanceof ArrayBuffer) xterm.write(new Uint8Array(message));
-        else end(message);
-      };
-      try {
-        fitNow();
-        const id = await api.openTerminal(hostId, xterm.cols, xterm.rows, output);
-        if (disposed) {
-          void api.closeTerminal(id);
-          return;
-        }
-        // It may already have ended (a server that refuses shells answers at once).
-        if (phase !== "connecting") return;
-        remote = id;
+      const dir = resumeDir;
+      resumeDir = null;
+      const result = await open(dir, false);
+      if (result === "ended" || disposed) return;
+      if (result === "live") {
         phase = "live";
         live.current.terminals.update(key, { status: "live" });
-      } catch (e) {
-        end({ exitCode: null, reason: errorMessage(e) });
-        void live.current.refreshConnections();
+      } else {
+        phase = "ended";
+        live.current.terminals.update(key, { status: "ended" });
+        xterm.write(`${note("[Not connected] Press Enter to try again")}\r\n`);
       }
     };
+
+    /**
+     * The connection dropped (network gone, laptop asleep): keep trying in the background, sooner
+     * once Windows says the network is back, and carry on in the same folder. A rejected login
+     * stops it, so a changed password can't get the address blocked by the server.
+     */
+    const reconnect = async () => {
+      if (phase === "reconnecting" || disposed) return;
+      phase = "reconnecting";
+      live.current.terminals.update(key, { status: "connecting" });
+      lastDir = folderIn(cursorLine()) ?? lastDir;
+      xterm.write(`\r\n${note("Reconnecting…")}\r\n`);
+      let wait = 1000;
+      while (!disposed && phase === "reconnecting") {
+        try {
+          const result = await open(lastDir, true);
+          if (result === "ended" || disposed) return;
+          if (result === "live") {
+            phase = "live";
+            live.current.terminals.update(key, { status: "live" });
+            return;
+          }
+        } catch (error) {
+          const why = errorMessage(error);
+          if (/auth|login|password|key/i.test(why)) {
+            resumeDir = lastDir;
+            phase = "ended";
+            live.current.terminals.update(key, { status: "ended" });
+            xterm.write(`${note(`[${why}] Press Enter to try again`)}\r\n`);
+            return;
+          }
+        }
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, wait);
+          retryNow = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+        retryNow = null;
+        wait = Math.min(wait * 2, 15000);
+      }
+    };
+    const networkBack = () => retryNow?.();
+    window.addEventListener("online", networkBack);
 
     const copy = () => {
       const text = xterm.getSelection();
@@ -203,16 +301,27 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
     actions.current = { start: () => void start(), copy, paste };
 
     xterm.onData((data) => {
-      if (phase === "live") void sendKeys(encoder.encode(data));
-      else if (phase === "ended" && data === "\r") void start();
+      if (phase === "live") {
+        // Each command line shows the folder it ran in: remember it for a reconnect.
+        if (data.includes("\r")) lastDir = folderIn(cursorLine()) ?? lastDir;
+        typeahead.typed(data);
+        void sendKeys(encoder.encode(data));
+      } else if (data === "\r") {
+        if (phase === "ended") void start();
+        else if (phase === "reconnecting") retryNow?.();
+      }
     });
     xterm.onBinary((data) => {
       if (phase === "live") void sendKeys(Uint8Array.from(data, (c) => c.charCodeAt(0) & 255));
     });
     xterm.onResize(({ cols, rows }) => {
+      typeahead.clear();
       if (remote !== null) void api.resizeTerminal(remote, cols, rows).catch(() => {});
     });
-    xterm.onTitleChange((title) => live.current.terminals.update(key, { title: title || null }));
+    xterm.onTitleChange((title) => {
+      lastDir = folderIn(title) ?? lastDir;
+      live.current.terminals.update(key, { title: title || null });
+    });
     // Ctrl+C copies when there's a selection (else it interrupts, as usual); Ctrl+V pastes.
     xterm.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown" || !event.ctrlKey || event.altKey || event.metaKey) return true;
@@ -245,6 +354,8 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
 
     return () => {
       disposed = true;
+      window.removeEventListener("online", networkBack);
+      retryNow?.();
       if (remote !== null) void api.closeTerminal(remote);
       resized.disconnect();
       themed.disconnect();

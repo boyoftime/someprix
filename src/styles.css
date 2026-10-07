@@ -1023,6 +1023,13 @@ input::-ms-clear {
   box-shadow: 0 0 0 3px var(--added-soft);
 }
 
+/* The connection dropped and is coming back by itself. */
+.status-dot[data-state="reconnecting"] {
+  background: var(--modified);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--modified) 22%, transparent);
+  animation: term-pulse 1s ease-in-out infinite alternate;
+}
+
 .empty {
   display: flex;
   flex-direction: column;

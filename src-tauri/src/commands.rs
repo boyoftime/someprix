@@ -188,7 +188,8 @@ pub async fn ssh_create_file(state: State<'_, AppState>, host_id: String, path: 
 
 // ---------- Terminal ----------
 
-/// Opens a shell on a connected host in a pseudo-terminal of `cols` x `rows`. Its output streams
+/// Opens a shell on a connected host in a pseudo-terminal of `cols` x `rows`, in `start_dir` if
+/// given (a reconnect carrying on where it was), else home. Its output streams
 /// to `output` as raw bytes, then one last JSON message says how it ended. Returns its id.
 #[tauri::command]
 pub async fn terminal_open(
@@ -196,10 +197,11 @@ pub async fn terminal_open(
     host_id: String,
     cols: u32,
     rows: u32,
+    start_dir: Option<String>,
     output: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<u32, String> {
     let conn = state.ssh.get(&host_id).await?;
-    let channel = conn.open_shell(cols, rows).await?;
+    let channel = conn.open_shell(cols, rows, start_dir.as_deref()).await?;
     Ok(state.terminals.start(channel, output))
 }
 
