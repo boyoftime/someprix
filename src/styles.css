@@ -1,0 +1,2992 @@
+/* ---------- Tokens ---------- */
+
+:root {
+  --font-ui: "Manrope Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+
+  --titlebar-h: 48px;
+  --sidebar-w: 232px;
+  --sidebar-rail-w: 68px;
+
+  /* Transparent space around the frame for its shadow and resize grips (GUTTER in windowFx.ts). */
+  --gutter: 14px;
+  --frame-radius: 8px;
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --chrome: #151722;
+  --sidebar: #1c1e2b;
+  --canvas: #1a1c28;
+  --raised: #262938;
+  --raised-hover: #2e3245;
+  --line: #2c2f41;
+  --text: #e8eaf2;
+  --text-muted: #8c91a8;
+  --accent: #4a7dff;
+  --accent-soft: rgba(74, 125, 255, 0.16);
+  --selected: rgba(74, 125, 255, 0.25);
+  --selected-hover: rgba(74, 125, 255, 0.31);
+  --danger: #e5484d;
+  --frame-edge: rgba(255, 255, 255, 0.08);
+  --frame-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --accent-hover: #5e8cff;
+  --field: #151722;
+  --dialog: #1f2130;
+  --overlay: rgba(6, 7, 12, 0.55);
+  --row-hover: rgba(255, 255, 255, 0.045);
+  --folder: #8fb0ff;
+  --added: #3fb950;
+  --added-soft: rgba(63, 185, 80, 0.22);
+  --modified: #e3b341;
+  --deleted: #f47067;
+  --danger-soft: rgba(229, 72, 77, 0.14);
+  --danger-text: #ff8b8f;
+  --disabled-bg: #2a2d3d;
+  --disabled-text: #6c7189;
+  --tip-bg: #353a50;
+  --tip-text: #f1f3f9;
+  --tip-edge: rgba(255, 255, 255, 0.07);
+
+  /* Editor */
+  --editor-bg: #161823;
+  --editor-line: rgba(255, 255, 255, 0.035);
+  --editor-gutter: #4d5270;
+  --editor-selection: rgba(74, 125, 255, 0.3);
+  --editor-match: rgba(74, 125, 255, 0.14);
+  --editor-search: rgba(227, 179, 65, 0.2);
+  --editor-search-edge: rgba(227, 179, 65, 0.55);
+  --editor-search-current: rgba(227, 179, 65, 0.42);
+  --editor-bracket: rgba(74, 125, 255, 0.18);
+  --editor-bracket-edge: rgba(74, 125, 255, 0.6);
+  --editor-guide: rgba(255, 255, 255, 0.07);
+  --editor-guide-active: rgba(255, 255, 255, 0.2);
+  --syn-keyword: #c49bff;
+  --syn-string: #a6d189;
+  --syn-number: #f4a66e;
+  --syn-comment: #686e8e;
+  --syn-function: #74b3ff;
+  --syn-type: #f0c674;
+  --syn-property: #7dd3e0;
+  --syn-tag: #ff8d8d;
+  --syn-punct: #9aa1bd;
+  --syn-regexp: #ff9ecf;
+  --syn-meta: #e3b341;
+  --syn-heading: #8fb0ff;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --chrome: #e6e8ee;
+  --sidebar: #f1f2f6;
+  --canvas: #fafbfc;
+  --raised: #ffffff;
+  --raised-hover: #eceef4;
+  --line: #dde0e8;
+  --text: #1b1e2c;
+  --text-muted: #5f6579;
+  --accent: #2d63ee;
+  --accent-soft: rgba(45, 99, 238, 0.12);
+  --selected: rgba(45, 99, 238, 0.17);
+  --selected-hover: rgba(45, 99, 238, 0.22);
+  --danger: #d93a3f;
+  --frame-edge: rgba(16, 20, 40, 0.14);
+  --frame-shadow: 0 6px 16px -6px rgba(20, 24, 40, 0.24), 0 1px 3px rgba(20, 24, 40, 0.12);
+  --accent-hover: #2457d6;
+  --field: #ffffff;
+  --dialog: #ffffff;
+  --overlay: rgba(20, 24, 40, 0.3);
+  --row-hover: rgba(16, 20, 40, 0.045);
+  --folder: #2d63ee;
+  --added: #1f883d;
+  --added-soft: rgba(31, 136, 61, 0.18);
+  --modified: #c27c0e;
+  --deleted: #cf222e;
+  --danger-soft: rgba(217, 58, 63, 0.1);
+  --danger-text: #b42328;
+  --disabled-bg: #e3e5eb;
+  --disabled-text: #8b90a3;
+  --tip-bg: #1f2232;
+  --tip-text: #ffffff;
+  --tip-edge: transparent;
+
+  /* Editor */
+  --editor-bg: #ffffff;
+  --editor-line: rgba(16, 20, 40, 0.035);
+  --editor-gutter: #a4a9ba;
+  --editor-selection: rgba(45, 99, 238, 0.2);
+  --editor-match: rgba(45, 99, 238, 0.1);
+  --editor-search: rgba(194, 124, 14, 0.16);
+  --editor-search-edge: rgba(194, 124, 14, 0.5);
+  --editor-search-current: rgba(194, 124, 14, 0.34);
+  --editor-bracket: rgba(45, 99, 238, 0.12);
+  --editor-bracket-edge: rgba(45, 99, 238, 0.5);
+  --editor-guide: rgba(16, 20, 40, 0.08);
+  --editor-guide-active: rgba(16, 20, 40, 0.24);
+  --syn-keyword: #8a3ffc;
+  --syn-string: #2f7d32;
+  --syn-number: #c4561a;
+  --syn-comment: #8a90a5;
+  --syn-function: #1f5fd6;
+  --syn-type: #a3700a;
+  --syn-property: #08799a;
+  --syn-tag: #c62f3c;
+  --syn-punct: #5f6579;
+  --syn-regexp: #b5317a;
+  --syn-meta: #9a6b00;
+  --syn-heading: #2d63ee;
+}
+
+/* ---------- Base ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: transparent;
+  color: var(--text);
+  font: 400 14px/1.5 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Shell ---------- */
+
+/* The visible window. The real OS window is transparent and slightly larger. */
+.app {
+  position: fixed;
+  inset: var(--gutter);
+  display: grid;
+  grid-template-rows: var(--titlebar-h) 1fr;
+  overflow: hidden;
+  border-radius: var(--frame-radius);
+  background: var(--canvas);
+  box-shadow:
+    0 0 0 1px var(--frame-edge),
+    var(--frame-shadow);
+  transform-origin: 50% 100%;
+}
+
+:root[data-window="maximized"] .app,
+:root[data-window="browser"] .app {
+  inset: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ---------- Resize grips (fill the gutter) ---------- */
+
+.rz {
+  position: fixed;
+  z-index: 20;
+}
+
+.rz-n,
+.rz-s {
+  left: 20px;
+  right: 20px;
+  height: calc(var(--gutter) + 2px);
+  cursor: ns-resize;
+}
+
+.rz-e,
+.rz-w {
+  top: 20px;
+  bottom: 20px;
+  width: calc(var(--gutter) + 2px);
+  cursor: ew-resize;
+}
+
+.rz-n { top: 0; }
+.rz-s { bottom: 0; }
+.rz-e { right: 0; }
+.rz-w { left: 0; }
+
+.rz-nw,
+.rz-ne,
+.rz-sw,
+.rz-se {
+  width: 20px;
+  height: 20px;
+}
+
+.rz-nw { top: 0; left: 0; cursor: nwse-resize; }
+.rz-se { right: 0; bottom: 0; cursor: nwse-resize; }
+.rz-ne { top: 0; right: 0; cursor: nesw-resize; }
+.rz-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+
+:root[data-window="maximized"] .resize-handles {
+  display: none;
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: 0;
+  transition: grid-template-columns 180ms var(--ease-out);
+}
+
+/* Icons only: the arrow at the foot of the sidebar folds it to a rail. */
+.app-body[data-sidebar="collapsed"] {
+  grid-template-columns: var(--sidebar-rail-w) 1fr;
+}
+
+/* ---------- Title bar ---------- */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 10px;
+  background: var(--chrome);
+}
+
+.titlebar-drag {
+  flex: 1;
+  align-self: stretch;
+}
+
+.tb-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.tb-btn:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 16px 0 8px;
+  border-radius: 8px;
+  background: var(--raised);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.win-controls {
+  display: flex;
+  align-self: stretch;
+  margin-left: 4px;
+}
+
+.win-btn {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.win-btn:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.win-btn.win-close:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.flip-x {
+  transform: scaleX(-1);
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: var(--sidebar);
+  overflow: hidden;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  height: 42px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.nav-item svg {
+  flex: none;
+}
+
+.nav-item:hover {
+  background: var(--raised-hover);
+}
+
+.nav-item[aria-current="page"] {
+  background: var(--raised);
+}
+
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding: 0 0 0 13px;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.nav-label {
+  transition: opacity 120ms linear;
+}
+
+.app-body[data-sidebar="collapsed"] .nav-label {
+  opacity: 0;
+}
+
+.app-body[data-sidebar="collapsed"] .nav-item {
+  position: relative;
+}
+
+.app-body[data-sidebar="collapsed"] .sidebar-foot {
+  justify-content: center;
+  padding: 0;
+}
+
+.app-body[data-sidebar="collapsed"] .sidebar-foot .nav-label {
+  display: none;
+}
+
+/* Folded, the change count and unsaved dot sit on the icon. */
+.app-body[data-sidebar="collapsed"] .nav-badge {
+  position: absolute;
+  top: 4px;
+  left: 24px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+.app-body[data-sidebar="collapsed"] .nav-dot {
+  position: absolute;
+  top: 9px;
+  left: 30px;
+}
+
+/* ---------- Canvas ---------- */
+
+.canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--canvas);
+}
+
+.nav-badge {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--modified);
+  color: #1b1e2c;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* ---------- Controls ---------- */
+
+.spacer {
+  flex: 1;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  font-size: 13.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--raised-hover);
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.btn-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+/* A main action that can't run yet goes neutral grey, so blue always means "ready". */
+.btn-primary:disabled,
+.btn-danger:disabled {
+  border-color: transparent;
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+  opacity: 1;
+}
+
+.btn-danger {
+  border-color: transparent;
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger);
+  filter: brightness(1.08);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn-danger-text {
+  color: var(--danger-text);
+}
+
+.btn-raised {
+  height: 36px;
+  border-color: transparent;
+}
+
+.btn-small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--raised-hover);
+  color: var(--text);
+}
+
+.icon-btn:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+input {
+  color: var(--text);
+  font: inherit;
+  user-select: text;
+}
+
+.field input,
+.file-pick input,
+.new-folder input {
+  height: 36px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  background: var(--field);
+}
+
+.field input:focus,
+.file-pick input:focus,
+.new-folder input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > span {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.field.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.field.port {
+  width: 92px;
+}
+
+.file-pick {
+  display: flex;
+  gap: 8px;
+}
+
+.file-pick input {
+  flex: 1;
+}
+
+.segmented {
+  display: inline-flex;
+  width: fit-content;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--field);
+}
+
+.segmented button {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 650;
+}
+
+.segmented button[aria-checked="true"] {
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.form-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  font-size: 13px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.check input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+/* ---------- Dialogs & toasts ---------- */
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+  animation: fade-in 120ms linear;
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  outline: none;
+  background: var(--dialog);
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.5);
+  animation: dialog-in 160ms var(--ease-out);
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  padding: 18px 16px 6px 20px;
+}
+
+.dialog-head h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 10px 20px 4px;
+  overflow: auto;
+}
+
+.dialog-foot {
+  display: flex;
+  gap: 8px;
+  padding: 16px 20px 18px;
+}
+
+.dialog-text {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.dialog-text strong,
+.dialog-text .mono {
+  color: var(--text);
+}
+
+.callout {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+
+.callout svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.callout p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.callout-danger {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.fingerprints {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+}
+
+.fingerprints dt {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.fingerprints dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  word-break: break-all;
+  user-select: text;
+}
+
+.toasts {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 440px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--dialog);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.45);
+  font-size: 13.5px;
+  pointer-events: auto;
+  animation: toast-in 180ms var(--ease-out);
+}
+
+.toast svg {
+  flex: none;
+}
+
+.toast-info svg {
+  color: var(--added);
+}
+
+.toast-error svg {
+  color: var(--danger);
+}
+
+/* ---------- Hosts page ---------- */
+
+.page {
+  height: 100%;
+  overflow: auto;
+  padding: 12px 24px 32px;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--text-muted);
+}
+
+.search-bar:focus-within {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.search-bar input {
+  flex: 1;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 14px 0 6px;
+}
+
+.page-section {
+  margin-top: 14px;
+}
+
+.section-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.host-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.host-card {
+  position: relative;
+  border-radius: 10px;
+  background: var(--raised);
+}
+
+.host-card:hover {
+  background: var(--raised-hover);
+}
+
+.host-card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 44px 12px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.host-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.host-card[data-state="connecting"] .host-icon {
+  background: var(--field);
+}
+
+.host-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.host-name {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.host-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.host-edit {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  opacity: 0;
+}
+
+.host-card:hover .host-edit,
+.host-edit:focus-visible {
+  opacity: 1;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--added);
+  box-shadow: 0 0 0 3px var(--added-soft);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 440px;
+  padding: 28px;
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--text-muted);
+}
+
+.empty h3 {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.empty p {
+  margin: 0 0 6px;
+  line-height: 1.55;
+}
+
+/* ---------- Sync: local and server side by side ---------- */
+
+.sync {
+  display: grid;
+  grid-template-columns: minmax(0, var(--split, 50%)) 0 minmax(0, 1fr);
+  height: 100%;
+}
+
+/* The divider between the panes: a hairline that thickens when it can be dragged. */
+.splitter {
+  position: relative;
+  z-index: 5;
+  outline: none;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+/* A wider, invisible grab area centred on the line. */
+.splitter::before {
+  content: "";
+  position: absolute;
+  inset: 0 -5px;
+}
+
+.splitter::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.5px;
+  width: 1px;
+  background: var(--line);
+  transition:
+    left 120ms var(--ease-out),
+    width 120ms var(--ease-out),
+    background-color 120ms linear;
+}
+
+.splitter:hover::after,
+.splitter:focus-visible::after,
+.splitter[data-dragging]::after {
+  left: -1.5px;
+  width: 3px;
+  background: var(--accent);
+}
+
+/* While dragging, the resize cursor stays put and nothing gets text-selected. */
+:root[data-resizing],
+:root[data-resizing] * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--canvas);
+}
+
+.pane-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 14px;
+}
+
+.pane-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 60%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--raised);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  background: var(--raised-hover);
+}
+
+/* Server picker: a chip that opens a list of saved hosts */
+
+.picker {
+  position: relative;
+  min-width: 0;
+}
+
+.picker-trigger {
+  max-width: 240px;
+}
+
+.picker-trigger[aria-expanded="true"] {
+  background: var(--raised-hover);
+}
+
+.picker-current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-chevron {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 160ms var(--ease-out);
+}
+
+.picker-trigger[aria-expanded="true"] .picker-chevron {
+  transform: rotate(180deg);
+}
+
+.picker-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 300px;
+  max-height: 360px;
+  padding: 5px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--dialog);
+  box-shadow:
+    0 18px 44px -14px rgba(0, 0, 0, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.2);
+  transform-origin: top right;
+  animation: pop-in 150ms var(--ease-out);
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px 6px 6px;
+  border: 0;
+  border-radius: 8px;
+  outline: none;
+  background: transparent;
+  text-align: left;
+}
+
+.picker-item:focus {
+  background: var(--raised-hover);
+}
+
+.picker-item[aria-selected="true"] .picker-icon {
+  background: var(--accent);
+  color: #fff;
+}
+
+.picker-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text-muted);
+}
+
+.picker-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.picker-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.picker-sub {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  flex: none;
+  color: var(--accent);
+}
+
+.picker-action {
+  min-height: 40px;
+}
+
+.picker-action .picker-icon {
+  background: transparent;
+  color: var(--accent);
+}
+
+.picker-action .picker-name {
+  color: var(--accent);
+}
+
+/* Connecting: the loading animation with what's happening underneath */
+
+.connecting {
+  gap: 4px;
+  animation: fade-in 200ms linear;
+}
+
+.connecting-anim {
+  margin-bottom: 6px;
+}
+
+.connecting-address {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pane-path {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  min-height: 38px;
+  padding: 0 14px;
+  overflow: hidden;
+  border-block: 1px solid var(--line);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Long paths lose their start, not the folder name at the end. */
+.path-tail {
+  min-width: 0;
+  overflow: hidden;
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-tail bdi {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.pane-path-tools {
+  padding-right: 6px;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.crumbs button {
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  white-space: nowrap;
+}
+
+.crumbs button:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.crumbs button[aria-current] {
+  color: var(--text);
+}
+
+.crumb {
+  display: inline-flex;
+  align-items: center;
+}
+
+.crumb-sep {
+  opacity: 0.5;
+}
+
+/* Sits right after the path it copies; turns green for a moment once copied. */
+.copy-btn {
+  width: 26px;
+  height: 26px;
+  margin-left: 2px;
+}
+
+.copy-btn[data-copied] {
+  color: var(--added);
+}
+
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 6px 12px;
+  container-type: inline-size;
+}
+
+.pane-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--sidebar);
+}
+
+.pane-note {
+  margin: 0;
+  padding: 0 14px 12px;
+  background: var(--sidebar);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.pane-message {
+  margin: 16px 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.pane-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.pane-empty h2 {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.pane-empty p {
+  max-width: 340px;
+  margin: 0 0 8px;
+  line-height: 1.55;
+}
+
+.welcome-mark {
+  border-radius: 12px;
+  animation: mark-in 520ms var(--ease-out) both;
+}
+
+.welcome-title {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: clamp(28px, 3.2vw, 40px);
+  font-weight: 760;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  animation: rise 620ms var(--ease-out) 120ms both;
+}
+
+.welcome-empty p,
+.welcome-empty .btn {
+  animation: fade-in 360ms linear 420ms both;
+}
+
+/* File rows: the local tree and the server list */
+
+.tree,
+.tree ul,
+.remote-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-row,
+.remote-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  padding-right: 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.remote-row {
+  gap: 8px;
+  padding-left: 10px;
+}
+
+.tree-row:hover,
+.remote-row:hover {
+  background: var(--row-hover);
+}
+
+/* Selected rows: a clear blue, a touch brighter under the pointer. */
+.remote-row[aria-selected="true"],
+.tree-row[aria-selected="true"] {
+  background: var(--selected);
+}
+
+.remote-row[aria-selected="true"]:hover,
+.tree-row[aria-selected="true"]:hover {
+  background: var(--selected-hover);
+}
+
+/* Just written by a push: a brief glow so the result is easy to spot. */
+.remote-row[data-fresh] {
+  animation: fresh-row 2600ms var(--ease-out);
+}
+
+@keyframes fresh-row {
+  0%,
+  40% {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+.tree-chevron {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 120ms var(--ease-out);
+}
+
+.tree-chevron[data-open] {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+
+/* Folders are filled in, so they stand apart from files at a glance. */
+.tree-icon.folder {
+  color: var(--folder);
+  fill: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-row[data-deleted] .tree-name {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.change-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.change-dot.added {
+  background: var(--added);
+}
+
+.change-dot.modified {
+  background: var(--modified);
+}
+
+.change-dot.deleted {
+  background: var(--deleted);
+}
+
+.remote-meta {
+  flex: none;
+  width: 150px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.remote-size {
+  flex: none;
+  width: 64px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Narrow server pane: drop the dates before the names get squeezed. */
+@container (max-width: 420px) {
+  .remote-meta {
+    display: none;
+  }
+}
+
+.dest-mark {
+  flex: none;
+  color: var(--accent);
+}
+
+.new-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px 10px;
+}
+
+.new-folder input {
+  flex: 1;
+  height: 30px;
+}
+
+.change-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.change-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dest {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dest-label {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.dest-path {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dest-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--added);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* Push dialog */
+
+.push-list {
+  max-height: 240px;
+  margin: 0;
+  padding: 6px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+  list-style: none;
+}
+
+.push-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  padding: 0 8px;
+}
+
+.push-list li[data-skipped] {
+  opacity: 0.55;
+}
+
+.push-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.push-kind {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.push-list li[data-state="done"] .push-path {
+  color: var(--text-muted);
+}
+
+.push-list li[data-state="current"] {
+  border-radius: 6px;
+  background: var(--accent-soft);
+}
+
+.push-done {
+  color: var(--added);
+}
+
+.push-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  vertical-align: middle;
+  animation: spin 700ms linear infinite;
+}
+
+/* Push progress: percentage, a filling bar, and what's happening underneath */
+
+.push-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--field);
+  animation: fade-in 160ms linear;
+}
+
+.push-progress-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.push-percent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 26px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.push-progress[data-phase="done"] .push-percent {
+  color: var(--added);
+}
+
+.push-status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.push-track {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--disabled-bg);
+}
+
+.push-fill {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  transition:
+    width 240ms linear,
+    background-color 200ms linear;
+}
+
+/* A soft shine travelling along the bar while it fills. */
+.push-progress[data-phase="pushing"] .push-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: translateX(-100%);
+  animation: shine 1.3s ease-in-out infinite;
+}
+
+.push-progress[data-phase="done"] .push-fill {
+  background: var(--added);
+}
+
+.push-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.push-eta {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.push-meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.push-speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 82px;
+  justify-content: flex-end;
+  color: var(--text);
+  font-weight: 650;
+}
+
+.push-speed svg {
+  color: var(--accent);
+}
+
+@keyframes shine {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Motion ---------- */
+
+@keyframes mark-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7) rotate(-8deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- Context menu ---------- */
+
+.ctx-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 210px;
+  max-width: 320px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  background: var(--dialog);
+  box-shadow:
+    0 16px 40px -12px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.2);
+  animation: menu-in 110ms var(--ease-out);
+}
+
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 6px;
+  outline: none;
+  background: transparent;
+  font-size: 13.5px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ctx-item:focus:not(:disabled) {
+  background: var(--raised-hover);
+}
+
+.ctx-item:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.ctx-item[data-danger] {
+  color: var(--danger-text);
+}
+
+.ctx-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  flex: none;
+  color: var(--text-muted);
+}
+
+.ctx-item[data-danger] .ctx-icon {
+  color: inherit;
+}
+
+.ctx-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-shortcut {
+  margin-left: 18px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+}
+
+.ctx-sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--line);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- Tooltips ---------- */
+
+.tip {
+  position: fixed;
+  z-index: 120;
+  max-width: 340px;
+  padding: 6px 10px;
+  border: 1px solid var(--tip-edge);
+  border-radius: 7px;
+  background: var(--tip-bg);
+  color: var(--tip-text);
+  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: tip-in 130ms var(--ease-out);
+}
+
+/* The small pointer toward the target. */
+.tip::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--arrow-x) - 5px);
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--tip-bg);
+  transform: rotate(45deg);
+}
+
+.tip[data-side="below"] {
+  --tip-from: -3px;
+}
+
+.tip[data-side="below"]::before {
+  top: -4px;
+}
+
+.tip[data-side="above"] {
+  --tip-from: 3px;
+}
+
+.tip[data-side="above"]::before {
+  bottom: -4px;
+}
+
+/* Disabled buttons get no pointer events, so their explanation lives on a wrapper. */
+.tip-wrap {
+  display: inline-flex;
+}
+
+.tip-wrap > button:disabled {
+  pointer-events: none;
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--tip-from, 0));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- SFTP: drag to upload ---------- */
+
+.selection-summary {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* The label that follows the pointer while dragging files from the local panel. */
+.drag-ghost {
+  position: fixed;
+  z-index: 130;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--dialog);
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  font-weight: 650;
+  pointer-events: none;
+  animation: tip-in 120ms var(--ease-out);
+}
+
+.drag-ghost-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drag-ghost-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* While dragging, the side that can take the files shows where they can go... */
+:root[data-dragging="upload"] .pane-body[data-drop-dir],
+:root[data-dragging="download"] .pane-body[data-drop-local] {
+  outline: 1.5px dashed var(--line);
+  outline-offset: -6px;
+  border-radius: 10px;
+}
+
+/* ...and lights up the folder the pointer is over. */
+:root[data-dragging] .pane-body[data-drop-active] {
+  outline-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+:root[data-dragging] .remote-row[data-drop-active] {
+  background: var(--accent);
+  color: #fff;
+}
+
+:root[data-dragging] .remote-row[data-drop-active] .tree-icon,
+:root[data-dragging] .remote-row[data-drop-active] .remote-meta,
+:root[data-dragging] .remote-row[data-drop-active] .remote-size {
+  color: inherit;
+}
+
+/* The hand shows only while files are actually being dragged. */
+:root[data-dragging],
+:root[data-dragging] * {
+  cursor: grabbing !important;
+}
+
+.pane-body[data-drop-dir] {
+  position: relative;
+}
+
+/* The SFTP footer: upload progress, the outcome, or a hint */
+
+.transfer-bar {
+  min-height: 64px;
+}
+
+.transfer-hint,
+.transfer-outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.transfer-outcome {
+  font-weight: 650;
+  animation: fade-in 200ms linear;
+}
+
+.transfer-bar[data-state="done"] .transfer-outcome svg {
+  color: var(--added);
+}
+
+.transfer-bar[data-state="failed"] .transfer-outcome {
+  color: var(--danger-text);
+}
+
+.transfer-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.transfer-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.transfer-percent {
+  flex: none;
+  font-size: 16px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.transfer-file {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-track {
+  height: 6px;
+}
+
+.transfer-bar[data-state="running"] .push-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: translateX(-100%);
+  animation: shine 1.3s ease-in-out infinite;
+}
+
+/* Selection box in the file lists (SFTP local, and the server) */
+
+.local-body,
+.server-body,
+.tree-body {
+  position: relative;
+}
+
+.select-box {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+/* File rows keep the normal arrow on hover and click. */
+.remote-row,
+.tree-row {
+  cursor: default;
+}
+
+:root[data-selecting],
+:root[data-selecting] * {
+  cursor: default !important;
+}
+
+/* The list itself takes focus (so typing works after clicking empty space) without a ring. */
+.pane-body:focus,
+.pane-body:focus-visible {
+  outline: none;
+}
+
+/* Upload cancel: quiet until needed, at the end of the progress line */
+.transfer-cancel {
+  flex: none;
+  margin-left: auto;
+}
+
+.transfer-head .push-eta + .transfer-cancel {
+  margin-left: 8px;
+}
+
+.transfer-bar[data-state="cancelling"] .push-fill {
+  background: var(--disabled-text);
+}
+
+.transfer-bar[data-state="cancelled"] .transfer-outcome svg {
+  color: var(--text-muted);
+}
+
+/* A name that can't be used for a new folder or file. */
+.new-item-error {
+  margin: 0 6px 6px 36px;
+  color: var(--danger-text);
+  font-size: 12.5px;
+}
+
+.new-folder input[aria-invalid] {
+  border-color: var(--danger);
+}
+
+/* What a delete confirmation will remove */
+.delete-list {
+  display: grid;
+  gap: 2px;
+  max-height: 168px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+  list-style: none;
+}
+
+.delete-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  min-width: 0;
+}
+
+.delete-list .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+/* A list on its way: a spinning ring in front of "Loading…" */
+.pane-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spinner {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+/* A finished download's "Show in folder", after its message */
+.transfer-outcome-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-reveal {
+  flex: none;
+  margin-left: 4px;
+}
+
+.transfer-bar .transfer-outcome .transfer-reveal svg {
+  color: currentColor;
+}
+
+/* Fast mode toggle beside "Push to server": quiet when off, a lit amber bolt when on */
+.fast-toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text-muted);
+  transition:
+    background 140ms var(--ease-out),
+    color 140ms var(--ease-out),
+    border-color 140ms var(--ease-out);
+}
+
+.fast-toggle:hover {
+  background: var(--raised-hover);
+  color: var(--text);
+}
+
+.fast-toggle[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--modified) 55%, transparent);
+  background: color-mix(in srgb, var(--modified) 16%, transparent);
+  color: var(--modified);
+}
+
+.fast-toggle[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+
+.fast-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* In the push dialog: says the files will travel packed */
+.fast-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--modified);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fast-note svg {
+  flex: none;
+  fill: currentColor;
+}
+
+/* Panel toolbars sit in the header row, leaving the path row to the path. */
+.pane {
+  container-type: inline-size;
+}
+
+.pane-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Narrow panels drop the title word and keep its icon. */
+@container (max-width: 400px) {
+  .pane-title-text {
+    display: none;
+  }
+}
+
+/* In a narrow header the host picker gives way first: the host name shortens with "…". */
+.pane-head .picker {
+  flex: 0 1 auto;
+}
+
+.pane-head .picker-trigger {
+  width: 100%;
+  min-width: 0;
+}
+
+.picker-trigger svg {
+  flex: none;
+}
+
+/* The ⚡ beside a running transfer that's in fast mode */
+.transfer-fast {
+  flex: none;
+  color: var(--modified);
+  fill: currentColor;
+}
+
+/* Deleting: each item shows where it stands, and the button spins while it works. */
+.delete-state {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  margin-left: auto;
+}
+
+.delete-list li[data-state="done"] {
+  opacity: 0.55;
+}
+
+.delete-list li[data-state="done"] .mono {
+  text-decoration: line-through;
+}
+
+.delete-list li[data-state="done"] .delete-state {
+  color: var(--added);
+}
+
+.delete-list li[data-state="failed"] .delete-state,
+.delete-list li[data-state="failed"] .mono {
+  color: var(--danger-text);
+}
+
+.delete-list .spinner {
+  width: 13px;
+  height: 13px;
+}
+
+.btn-spinner {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+/* A danger button that's busy (not merely unavailable) keeps its colour. */
+.btn-danger[aria-busy="true"]:disabled {
+  background: var(--danger);
+  color: #fff;
+  cursor: progress;
+}
+
+/* Properties */
+.props-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.props-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.props-grid {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+
+.props-row {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.props-row dt {
+  color: var(--text-muted);
+}
+
+.props-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.props-calculating {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.props-calculating .spinner,
+.props-item-size .spinner {
+  width: 12px;
+  height: 12px;
+}
+
+.props-list {
+  display: grid;
+  gap: 2px;
+  max-height: 180px;
+  margin: 0;
+  padding: 6px 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+  list-style: none;
+}
+
+.props-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 13px;
+}
+
+.props-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.props-item-size {
+  flex: none;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.props-note {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+/* Drawn every frame by useSmoothFill, so no width transition (it would lag the drawing). */
+.push-fill.smooth-fill {
+  width: 0;
+  transition: background-color 200ms linear;
+}
+
+/* ---------- Editor ---------- */
+
+/* The page behind the editor: kept mounted (and inert) while the editor shows. */
+.page-host {
+  height: 100%;
+}
+
+.editor {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg);
+}
+
+.editor[hidden],
+.editor-surface[hidden] {
+  display: none;
+}
+
+.editor-tabs {
+  display: flex;
+  flex: none;
+  height: 42px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--canvas);
+  box-shadow: inset 0 -1px var(--line);
+  scrollbar-width: none;
+}
+
+.editor-tab {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  padding: 0 7px 0 14px;
+  border-right: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.editor-tab:hover {
+  color: var(--text);
+}
+
+.editor-tab[aria-selected="true"] {
+  background: var(--editor-bg);
+  color: var(--text);
+}
+
+/* The open tab's top edge, in the accent. */
+.editor-tab[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--accent);
+}
+
+.editor-tab:focus-visible {
+  outline-offset: -2px;
+}
+
+.editor-tab-icon {
+  flex: none;
+}
+
+.editor-tab[aria-selected="true"] .editor-tab-icon {
+  color: var(--accent);
+}
+
+.editor-tab-spinner {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+
+.editor-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-tab-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+}
+
+.editor-tab-close > * {
+  grid-area: 1 / 1;
+}
+
+.editor-tab:hover .editor-tab-close,
+.editor-tab[aria-selected="true"] .editor-tab-close,
+.editor-tab[data-dirty] .editor-tab-close {
+  opacity: 1;
+}
+
+.editor-tab-close:hover {
+  background: var(--raised-hover);
+  color: var(--text);
+}
+
+/* Unsaved: a dot where the X is, until the pointer is on it. */
+.editor-tab[data-dirty] .editor-tab-close svg,
+.editor-tab[data-dirty] .editor-tab-close:hover .dirty-dot {
+  visibility: hidden;
+}
+
+.editor-tab[data-dirty] .editor-tab-close:hover svg {
+  visibility: visible;
+}
+
+.dirty-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.editor-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.editor-bar-icon {
+  flex: none;
+}
+
+.editor-host {
+  flex: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.editor-path {
+  min-width: 0;
+}
+
+.editor-flag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: var(--raised);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.editor-save {
+  margin-left: 2px;
+}
+
+.editor-surface {
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-surface .cm-editor {
+  height: 100%;
+}
+
+.editor-surface .cm-scroller {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.editor-placeholder {
+  display: grid;
+  flex: 1;
+  place-items: center;
+}
+
+.cm-fold-marker {
+  display: grid;
+  place-items: center;
+  transition:
+    transform 120ms var(--ease-out),
+    opacity 120ms linear;
+}
+
+/* Open blocks show their chevron only while the pointer is over the gutter; folded ones always. */
+.cm-fold-marker[data-open] {
+  opacity: 0;
+  transform: rotate(90deg);
+}
+
+.cm-gutters:hover .cm-fold-marker[data-open] {
+  opacity: 1;
+}
+
+.editor-status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 18px;
+  height: 30px;
+  padding: 0 14px;
+  border-top: 1px solid var(--line);
+  background: var(--sidebar);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.editor-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 62px;
+  font-weight: 650;
+}
+
+.editor-state[data-state="unsaved"] {
+  color: var(--text);
+}
+
+.editor-state[data-state="saved"] {
+  color: var(--added);
+  animation: fade-in 160ms var(--ease-out);
+}
+
+.editor-unsaved {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.editor-unsaved li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.editor-unsaved-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-unsaved-where {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+/* Next to Editor in the sidebar while files have unsaved changes. */
+.nav-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+/* ---------- Terminal ---------- */
+
+.term-page {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg);
+}
+
+.term-page[hidden],
+.term-view[hidden] {
+  display: none;
+}
+
+.term-tabs {
+  align-items: center;
+}
+
+.term-tabs .editor-tab {
+  align-self: stretch;
+}
+
+/* Where each tab's connection stands: green live, amber while connecting, grey once ended. */
+.term-status {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--added);
+}
+
+.term-status[data-status="connecting"] {
+  background: var(--modified);
+  animation: term-pulse 1s ease-in-out infinite alternate;
+}
+
+.term-status[data-status="ended"] {
+  background: var(--disabled-text);
+}
+
+@keyframes term-pulse {
+  to {
+    opacity: 0.35;
+  }
+}
+
+.term-new {
+  margin: 0 6px;
+}
+
+.term-views {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.term-view {
+  position: absolute;
+  inset: 0;
+  padding: 10px 4px 4px 14px;
+}
+
+.term-screen {
+  width: 100%;
+  height: 100%;
+}
+
+.term-screen .xterm {
+  height: 100%;
+}
+
+/* xterm paints the space under the last row black, and a black shadow under its scrollbar. */
+.term-screen {
+  --vscode-scrollbar-shadow: transparent;
+}
+
+.term-screen .xterm-viewport {
+  background-color: transparent !important;
+  scrollbar-width: none;
+}
+
+.term-empty {
+  position: absolute;
+  inset: 0;
+}
+
+.term-hosts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* ---------- Sync: folder watch status ---------- */
+
+.watch {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 14px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.watch-dot {
+  position: relative;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--added);
+}
+
+/* A slow ripple: the folder is being watched. */
+.watch-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  animation: watch-ripple 2.8s var(--ease-out) infinite;
+}
+
+@keyframes watch-ripple {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  60%,
+  100% {
+    opacity: 0;
+    transform: scale(2.8);
+  }
+}
+
+.watch[data-state="detected"] {
+  color: var(--text);
+}
+
+.watch[data-state="detected"] .watch-dot::after {
+  animation-duration: 0.9s;
+  animation-iteration-count: 2;
+}
+
+.watch[data-state="scanning"] .watch-dot {
+  background: var(--modified);
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/someprix.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Someprix</title>
+    <script>
+      // Apply the saved theme before first paint so the window never flashes the wrong colors.
+      (function () {
+        var pref = "dark";
+        try {
+          pref = localStorage.getItem("someprix.theme") || "dark";
+        } catch (e) {}
+        if (pref === "system") {
+          pref = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.dataset.theme = pref === "light" ? "light" : "dark";
+      })();
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
