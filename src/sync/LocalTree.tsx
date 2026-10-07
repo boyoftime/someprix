@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
+  Ban,
   ChevronRight,
   Copy,
   ExternalLink,
@@ -12,6 +13,7 @@ import {
   FilePen,
   Info,
   ListTree,
+  Undo2,
   Upload,
 } from "lucide-react";
 import { api, localPath, type Change, type ChangeKind, type LocalEntry } from "../lib/api";
@@ -35,6 +37,10 @@ type LocalTreeProps = {
   pushBlocker: string | null;
   /** Push only the changes at or under these project paths. */
   onPushPaths: (paths: string[]) => void;
+  /** Paths excluded from pushing (files, or folders with everything inside). */
+  excluded: string[];
+  /** Excludes paths from pushing, or with `exclude` false includes them again. */
+  onExclude: (paths: string[], exclude: boolean) => void;
 };
 
 const KIND_LABEL: Record<ChangeKind, string> = {
@@ -50,7 +56,9 @@ function summarize(kinds: Set<ChangeKind>): ChangeKind {
   return kinds.size === 1 ? [...kinds][0] : "modified";
 }
 
-export function LocalTree({ root, changes, pushBlocker, onPushPaths }: LocalTreeProps) {
+export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, onExclude }: LocalTreeProps) {
+  /** The excluded path that covers `path` (itself, or a folder it's in), if any. */
+  const excludedBy = (path: string) => excluded.find((ex) => path === ex || path.startsWith(`${ex}/`)) ?? null;
   const { notify } = useAppData();
   const openMenu = useContextMenu();
   const attempt = (action: Promise<unknown>) => void action.catch((e) => notify(errorMessage(e), "error"));
@@ -169,6 +177,34 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths }: LocalTree
     return [shown.get(row.path)!];
   };
 
+  /** Exclude the chosen items from pushing, or include the ones excluded themselves again. */
+  const excludeMenu = (targets: Shown[]): MenuItem[] => {
+    const paths = targets.map((t) => t.row.path);
+    const free = paths.filter((path) => !excludedBy(path));
+    const own = paths.filter((path) => excluded.includes(path));
+    const many = targets.length > 1;
+    const items: MenuItem[] = [];
+    if (free.length) {
+      items.push({
+        label: many ? `Exclude ${free.length} from push` : "Exclude from push",
+        icon: Ban,
+        onSelect: () => onExclude(free, true),
+      });
+    }
+    if (own.length) {
+      items.push({
+        label: many ? `Include ${own.length} in push` : "Include in push",
+        icon: Undo2,
+        onSelect: () => onExclude(own, false),
+      });
+    }
+    // Inside an excluded folder: it's that folder that has to be included again.
+    if (!items.length) {
+      items.push({ label: `Excluded with ${excludedBy(paths[0])}`, icon: Ban, onSelect: () => {}, disabled: true });
+    }
+    return items;
+  };
+
   const manyMenu = (targets: Shown[]): MenuItem[] => {
     const changed = targets.filter((t) => t.kind);
     return [
@@ -178,6 +214,7 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths }: LocalTree
         onSelect: () => onPushPaths(changed.map((t) => t.row.path)),
         disabled: !changed.length || pushBlocker !== null,
       },
+      ...excludeMenu(targets),
       "separator",
       {
         label: "Copy paths",
@@ -229,6 +266,7 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths }: LocalTree
       ...open,
       "separator",
       ...push,
+      ...excludeMenu(targets),
       "separator",
       { label: "Copy path", icon: Copy, onSelect: () => attempt(writeText(full)) },
       { label: "Copy relative path", icon: Copy, onSelect: () => attempt(writeText(row.path)) },
@@ -272,6 +310,7 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths }: LocalTree
             className="tree-row"
             data-path={row.path}
             data-deleted={row.deleted || kind === "deleted" ? "" : undefined}
+            data-excluded={excludedBy(row.path) ? "" : undefined}
             style={{ paddingLeft: 10 + depth * 16 }}
             // Rows aren't dragged anywhere here, so pressing anywhere on one can start a selection box.
             onPointerDown={(event) => beginBox(event, false)}
@@ -296,6 +335,12 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths }: LocalTree
               <File size={16} strokeWidth={1.75} className="tree-icon" />
             )}
             <span className="tree-name">{row.name}</span>
+            {excluded.includes(row.path) && (
+              <span className="excluded-mark" data-tip="Excluded from push">
+                <Ban size={13} strokeWidth={2} />
+                <span className="sr-only">Excluded from push</span>
+              </span>
+            )}
             {kind && (
               <span className={`change-dot ${kind}`} data-tip={row.isDir ? "Changes inside" : KIND_LABEL[kind]}>
                 <span className="sr-only">{row.isDir ? "Has changes" : KIND_LABEL[kind]}</span>

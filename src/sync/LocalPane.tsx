@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { ChevronDown, Copy, FolderOpen, FolderSearch, Laptop, Upload } from "lucide-react";
+import { Ban, ChevronDown, Copy, FolderOpen, FolderSearch, Laptop, Upload } from "lucide-react";
 import { errorMessage, useAppData } from "../state/AppData";
 import { useContextMenu } from "../ui/ContextMenu";
 import { FastToggle } from "../ui/FastToggle";
 import { Logo } from "../components/Logo";
 import { LocalTree } from "./LocalTree";
+import { ExcludedDialog } from "./ExcludedDialog";
 import type { Change } from "../lib/api";
 
 type LocalPaneProps = {
@@ -81,7 +82,9 @@ function WatchStatus({ changes, scanning }: { changes: Change[]; scanning: boole
 }
 
 export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange }: LocalPaneProps) {
-  const { project, projectLoading, openProject, notify } = useAppData();
+  const { project, projectLoading, openProject, notify, excludeFromPush } = useAppData();
+  // The list of excluded paths, while it's open.
+  const [showExcluded, setShowExcluded] = useState(false);
   const openMenu = useContextMenu();
   const attempt = (action: Promise<unknown>) => void action.catch((e) => notify(errorMessage(e), "error"));
 
@@ -159,10 +162,28 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
         <WatchStatus key={project.root} changes={changes} scanning={projectLoading} />
       </div>
 
-      <LocalTree root={project.root} changes={changes} pushBlocker={pushBlocker} onPushPaths={onPushPaths} />
+      <LocalTree
+        root={project.root}
+        changes={changes}
+        pushBlocker={pushBlocker}
+        onPushPaths={onPushPaths}
+        excluded={project.excluded}
+        onExclude={(paths, exclude) => void excludeFromPush(paths, exclude)}
+      />
 
       <footer className="pane-foot">
         <ChangeSummary changes={changes} />
+        {project.excluded.length > 0 && (
+          <button
+            type="button"
+            className="excluded-count"
+            onClick={() => setShowExcluded(true)}
+            data-tip="Left out of pushing"
+          >
+            <Ban size={13} strokeWidth={2} />
+            {project.excluded.length} excluded
+          </button>
+        )}
         <span className="spacer" />
         <FastToggle on={fast} onChange={onFastChange} />
         <span className="tip-wrap" data-tip={changes.length > 0 ? (pushBlocker ?? undefined) : "No changes"}>
@@ -178,6 +199,13 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
         </span>
       </footer>
       {changes.length > 0 && pushBlocker && <p className="pane-note">{pushBlocker}</p>}
+      {showExcluded && (
+        <ExcludedDialog
+          excluded={project.excluded}
+          onInclude={(paths) => void excludeFromPush(paths, false)}
+          onClose={() => setShowExcluded(false)}
+        />
+      )}
     </section>
   );
 }

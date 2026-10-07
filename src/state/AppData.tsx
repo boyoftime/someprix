@@ -52,6 +52,8 @@ type AppData = {
   openProject: (root: string) => Promise<ProjectInfo | null>;
   closeProject: () => Promise<void>;
   setTarget: (hostId: string | null, remoteDir: string | null) => Promise<void>;
+  /** Leaves project paths out of pushing (or, with `exclude` false, puts them back). */
+  excludeFromPush: (paths: string[], exclude: boolean) => Promise<void>;
   /** Set after every push so server views refresh and can point out what was written. */
   lastPush: PushRecord | null;
   recordPush: (paths: string[]) => void;
@@ -307,6 +309,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setProject((p) => (p ? { ...p, hostId, remoteDir } : p));
   }, []);
 
+  const excludeFromPush = useCallback(
+    async (paths: string[], exclude: boolean) => {
+      try {
+        setProject(await api.excludeFromPush(paths, exclude));
+      } catch (error) {
+        notify(message(error), "error");
+      }
+    },
+    [notify],
+  );
+
   const value = useMemo<AppData>(
     () => ({
       hosts,
@@ -326,6 +339,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       openProject,
       closeProject,
       setTarget,
+      excludeFromPush,
       lastPush,
       recordPush,
       toasts,
@@ -349,6 +363,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       openProject,
       closeProject,
       setTarget,
+      excludeFromPush,
       lastPush,
       recordPush,
       toasts,

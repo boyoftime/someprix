@@ -43,6 +43,8 @@ export type ProjectInfo = {
   hostId: string | null;
   remoteDir: string | null;
   changes: Change[];
+  /** Project paths (files or folders) excluded from pushing. */
+  excluded: string[];
 };
 
 export type PushProgress = {
@@ -148,6 +150,8 @@ export const api = {
   listLocal: (dir: string) => call<LocalEntry[]>("project_list", { dir }),
   setTarget: (hostId: string | null, remoteDir: string | null) =>
     call<void>("project_set_target", { hostId, remoteDir }),
+  /** Excludes project paths from pushing (or, with `exclude` false, includes them again). */
+  excludeFromPush: (paths: string[], exclude: boolean) => call<ProjectInfo>("project_exclude", { paths, exclude }),
   /** Pushes every change, or with `only`, the changes at or under those project paths. */
   push: (includeDeletions: boolean, only?: string[], fast = false) =>
     call<PushReport>("project_push", { includeDeletions, only: only ?? null, fast }),

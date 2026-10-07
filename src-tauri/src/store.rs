@@ -46,6 +46,9 @@ pub enum AuthMethod {
 pub struct ProjectLink {
     pub host_id: Option<String>,
     pub remote_dir: Option<String>,
+    /// Project paths (files or folders) the user excluded from pushing.
+    #[serde(default)]
+    pub excluded: Vec<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]

@@ -272,6 +272,8 @@ pub struct ProjectInfo {
     host_id: Option<String>,
     remote_dir: Option<String>,
     changes: Vec<Change>,
+    /// Paths excluded from pushing.
+    excluded: Vec<String>,
 }
 
 /// Project folders are keyed by their path without a trailing separator.
@@ -288,7 +290,7 @@ fn project_info(state: &AppState) -> Option<ProjectInfo> {
     let guard = state.project.lock().unwrap();
     let project = guard.as_ref()?;
     let root = project.root.to_string_lossy().into_owned();
-    let ProjectLink { host_id, remote_dir } = state.store.project_link(&root);
+    let ProjectLink { host_id, remote_dir, .. } = state.store.project_link(&root);
     Some(ProjectInfo {
         name: project
             .root
@@ -298,6 +300,7 @@ fn project_info(state: &AppState) -> Option<ProjectInfo> {
         host_id,
         remote_dir,
         changes: project.changes(),
+        excluded: project.excluded().to_vec(),
     })
 }
 
@@ -307,8 +310,9 @@ pub async fn project_open(app: AppHandle, state: State<'_, AppState>, root: Stri
     let baseline = state.store.baseline_path(&root);
     let shared = state.project.clone();
     let path = PathBuf::from(&root);
+    let excluded = state.store.project_link(&root).excluded;
     // Hashing a large folder the first time takes a moment; keep it off the UI thread.
-    tauri::async_runtime::spawn_blocking(move || project::open(&app, &shared, &path, baseline))
+    tauri::async_runtime::spawn_blocking(move || project::open(&app, &shared, &path, baseline, excluded))
         .await
         .map_err(|e| e.to_string())??;
     state.store.set_active_project(Some(&root))?;
@@ -346,7 +350,51 @@ pub fn project_set_target(
     remote_dir: Option<String>,
 ) -> Result<(), String> {
     let root = project_info(&state).ok_or("No project open")?.root;
-    state.store.set_project_link(&root, ProjectLink { host_id, remote_dir })
+    let excluded = state.store.project_link(&root).excluded;
+    state.store.set_project_link(&root, ProjectLink { host_id, remote_dir, excluded })
+}
+
+/// Excludes project paths (files or folders) from pushing, or, with `exclude` false, includes
+/// them again. Excluded paths stop counting as changes; a folder covers everything inside it.
+#[tauri::command]
+pub async fn project_exclude(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+    exclude: bool,
+) -> Result<ProjectInfo, String> {
+    let shared = state.project.clone();
+    let (root, excluded, changes) = tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = shared.lock().unwrap();
+        let project = guard.as_mut().ok_or("No project open")?;
+        let mut list = project.excluded().to_vec();
+        for path in paths.iter().map(|p| p.trim_matches('/').to_string()).filter(|p| !p.is_empty()) {
+            let inside = |item: &String, folder: &str| {
+                item == folder || item.strip_prefix(folder).is_some_and(|rest| rest.starts_with('/'))
+            };
+            if exclude {
+                // Already covered by an excluded folder: nothing to add.
+                if list.iter().any(|item| inside(&path, item)) {
+                    continue;
+                }
+                // A folder takes over anything excluded inside it.
+                list.retain(|item| !inside(item, &path));
+                list.push(path);
+            } else {
+                list.retain(|item| item != &path);
+            }
+        }
+        list.sort();
+        project.set_excluded(list.clone());
+        Ok::<_, String>((project.root.to_string_lossy().into_owned(), list, project.changes()))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let mut link = state.store.project_link(&root);
+    link.excluded = excluded;
+    state.store.set_project_link(&root, link)?;
+    let _ = app.emit(CHANGES_EVENT, changes);
+    project_info(&state).ok_or_else(|| "Project closed".into())
 }
 
 #[derive(Clone, Serialize)]

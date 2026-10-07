@@ -3110,3 +3110,75 @@ input::-ms-clear {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- Sync: excluded from push ---------- */
+
+/* Left out of pushing: still listed, faded. */
+.tree-row[data-excluded] .tree-icon,
+.tree-row[data-excluded] .tree-name {
+  opacity: 0.45;
+}
+
+.excluded-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  margin-right: 2px;
+  color: var(--text-muted);
+}
+
+.excluded-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.excluded-count:hover {
+  background: var(--raised-hover);
+  color: var(--text);
+}
+
+.excluded-list {
+  display: grid;
+  gap: 4px;
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.excluded-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 4px 0 10px;
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.excluded-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.excluded-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

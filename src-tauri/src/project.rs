@@ -81,6 +81,8 @@ pub struct Project {
     baseline: HashMap<String, Sig>,
     baseline_file: PathBuf,
     changes: BTreeMap<String, ChangeKind>,
+    /// Paths the user excluded from pushing: never counted as changes, never pushed.
+    excluded: Vec<String>,
     _watcher: RecommendedWatcher,
 }
 
@@ -90,7 +92,13 @@ pub type SharedProject = Arc<Mutex<Option<Project>>>;
 
 /// Opens `root`, compares it with its baseline (creating one if this folder is new), and starts
 /// watching it. Changes are emitted as `project://changes` whenever they settle.
-pub fn open(app: &AppHandle, shared: &SharedProject, root: &Path, baseline_file: PathBuf) -> Result<(), String> {
+pub fn open(
+    app: &AppHandle,
+    shared: &SharedProject,
+    root: &Path,
+    baseline_file: PathBuf,
+    excluded: Vec<String>,
+) -> Result<(), String> {
     if !root.is_dir() {
         return Err(format!("Not a folder: {}", root.display()));
     }
@@ -114,6 +122,7 @@ pub fn open(app: &AppHandle, shared: &SharedProject, root: &Path, baseline_file:
         baseline: HashMap::new(),
         baseline_file,
         changes: BTreeMap::new(),
+        excluded,
         _watcher: watcher,
     };
     match saved {
@@ -231,7 +240,24 @@ pub fn signature(path: &Path) -> io::Result<Sig> {
     })
 }
 
+/// Whether `rel` is one of `excluded`, or inside one of them.
+fn is_excluded(excluded: &[String], rel: &str) -> bool {
+    excluded
+        .iter()
+        .any(|ex| rel == ex || rel.strip_prefix(ex.as_str()).is_some_and(|rest| rest.starts_with('/')))
+}
+
 impl Project {
+    pub fn excluded(&self) -> &[String] {
+        &self.excluded
+    }
+
+    /// Replaces what's excluded from pushing and re-checks the folder against it.
+    pub fn set_excluded(&mut self, excluded: Vec<String>) {
+        self.excluded = excluded;
+        self.rescan();
+    }
+
     pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
         path.starts_with(&self.root)
             && path != self.root
@@ -242,12 +268,15 @@ impl Project {
     fn walk(&self, dir: &Path) -> Vec<String> {
         let ignore = self.ignore.clone();
         let root = self.root.clone();
+        let excluded = self.excluded.clone();
         ignore::WalkBuilder::new(dir)
             .standard_filters(false)
             .follow_links(false)
             .filter_entry(move |entry| {
                 let is_dir = entry.file_type().is_some_and(|t| t.is_dir());
-                entry.path() == root || !ignore.matched_path_or_any_parents(entry.path(), is_dir).is_ignore()
+                entry.path() == root
+                    || (!ignore.matched_path_or_any_parents(entry.path(), is_dir).is_ignore()
+                        && !rel_path(&root, entry.path()).is_some_and(|rel| is_excluded(&excluded, &rel)))
             })
             .build()
             .filter_map(Result::ok)
@@ -291,7 +320,8 @@ impl Project {
         let gone: Vec<String> = self
             .baseline
             .keys()
-            .filter(|rel| !present_set.contains(rel))
+            // Excluded files aren't deleted, just left out.
+            .filter(|rel| !present_set.contains(rel) && !is_excluded(&self.excluded, rel))
             .cloned()
             .collect();
         for rel in gone {
@@ -310,7 +340,7 @@ impl Project {
                 continue;
             };
             let is_dir = path.is_dir();
-            if self.is_ignored(path, is_dir) {
+            if self.is_ignored(path, is_dir) || is_excluded(&self.excluded, &rel) {
                 continue;
             }
             if is_dir {
@@ -341,6 +371,10 @@ impl Project {
     /// Updates the change state of one file. Returns true if the baseline was touched (a file
     /// was re-saved with identical content, so only its modified time moved).
     fn check(&mut self, rel: &str) -> bool {
+        if is_excluded(&self.excluded, rel) {
+            self.changes.remove(rel);
+            return false;
+        }
         let path = self.root.join(rel);
         let mut touched = false;
         let kind = match fs::metadata(&path) {

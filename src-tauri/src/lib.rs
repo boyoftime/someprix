@@ -47,6 +47,7 @@ pub fn run() {
             commands::project_close,
             commands::project_list,
             commands::project_set_target,
+            commands::project_exclude,
             commands::project_push,
             commands::local_home,
             commands::local_list,
