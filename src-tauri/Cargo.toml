@@ -1,6 +1,6 @@
 [package]
 name = "someprix"
-version = "1.8.0"
+version = "1.9.0"
 description = "Someprix desktop app"
 authors = ["Someprix"]
 edition = "2021"
@@ -37,6 +37,7 @@ trash = "5"
 tar = "0.4"
 flate2 = "1"
 futures = "0.3"
+tauri-plugin-updater = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

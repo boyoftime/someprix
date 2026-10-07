@@ -17,6 +17,7 @@ import { EditorProvider } from "./editor/EditorProvider";
 import { EditorPage } from "./editor/EditorPage";
 import { TerminalProvider } from "./terminal/TerminalProvider";
 import { TerminalPage } from "./terminal/TerminalPage";
+import { UpdateProvider } from "./update/UpdateProvider";
 
 /** Whether the sidebar is folded to icons, kept between launches. */
 const SIDEBAR = "someprix.sidebar";
@@ -62,35 +63,37 @@ function Workspace() {
   return (
     <EditorProvider onShow={() => setOverlay("editor")}>
       <TerminalProvider onShow={() => setOverlay("terminal")}>
-        <div className="app-body" data-sidebar={collapsed ? "collapsed" : "open"}>
-          <Sidebar
-            page={overlay ?? page}
-            onNavigate={navigate}
-            pending={project?.changes.length ?? 0}
-            collapsed={collapsed}
-            onToggleCollapsed={toggleCollapsed}
-          />
-          <main className="canvas">
-            <div className="page-host" inert={overlay !== null}>
-              {page === "sync" ? (
-                <SyncPage requestedHostId={requestedHostId} onRequestHandled={() => setRequestedHostId(null)} />
-              ) : page === "sftp" ? (
-                <SftpPage />
-              ) : (
-                <HostsPage
-                  onOpenInSync={(host) => {
-                    setRequestedHostId(host.id);
-                    navigate("sync");
-                  }}
-                />
-              )}
-            </div>
-            <TerminalPage shown={overlay === "terminal"} />
-            <EditorPage shown={overlay === "editor"} />
-          </main>
-          <TrustDialog />
-          <Toasts />
-        </div>
+        <UpdateProvider>
+          <div className="app-body" data-sidebar={collapsed ? "collapsed" : "open"}>
+            <Sidebar
+              page={overlay ?? page}
+              onNavigate={navigate}
+              pending={project?.changes.length ?? 0}
+              collapsed={collapsed}
+              onToggleCollapsed={toggleCollapsed}
+            />
+            <main className="canvas">
+              <div className="page-host" inert={overlay !== null}>
+                {page === "sync" ? (
+                  <SyncPage requestedHostId={requestedHostId} onRequestHandled={() => setRequestedHostId(null)} />
+                ) : page === "sftp" ? (
+                  <SftpPage />
+                ) : (
+                  <HostsPage
+                    onOpenInSync={(host) => {
+                      setRequestedHostId(host.id);
+                      navigate("sync");
+                    }}
+                  />
+                )}
+              </div>
+              <TerminalPage shown={overlay === "terminal"} />
+              <EditorPage shown={overlay === "editor"} />
+            </main>
+            <TrustDialog />
+            <Toasts />
+          </div>
+        </UpdateProvider>
       </TerminalProvider>
     </EditorProvider>
   );

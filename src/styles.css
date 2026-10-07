@@ -370,8 +370,7 @@ button {
 .sidebar-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 2px;
   margin-top: auto;
   padding: 0 0 0 13px;
   color: var(--text-muted);
@@ -396,8 +395,28 @@ button {
   padding: 0;
 }
 
-.app-body[data-sidebar="collapsed"] .sidebar-foot .nav-label {
+.app-body[data-sidebar="collapsed"] .sidebar-foot .nav-label,
+.app-body[data-sidebar="collapsed"] .sidebar-check {
   display: none;
+}
+
+.sidebar-check {
+  margin-left: auto;
+}
+
+/* Shows when GitHub has a newer version; sits just above the version line. */
+.sidebar-update {
+  margin-top: auto;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sidebar-update:hover {
+  background: var(--selected);
+}
+
+.sidebar-update + .sidebar-foot {
+  margin-top: 6px;
 }
 
 /* Folded, the change count and unsaved dot sit on the icon. */
@@ -2989,4 +3008,62 @@ input {
 
 .watch[data-state="scanning"] .watch-dot {
   background: var(--modified);
+}
+
+/* ---------- Update dialog ---------- */
+
+.update-body {
+  display: grid;
+  gap: 12px;
+}
+
+.update-version {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.update-version .muted {
+  font-weight: 500;
+}
+
+.update-notes {
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.update-progress {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.update-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--raised);
+}
+
+.update-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 160ms linear;
+}
+
+.update-progress-text {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }

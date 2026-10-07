@@ -1,6 +1,18 @@
-import { ArrowLeftRight, ChevronsLeft, ChevronsRight, FileCode, FolderUp, Server, SquareTerminal } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowLeftRight,
+  ChevronsLeft,
+  ChevronsRight,
+  FileCode,
+  FolderUp,
+  RefreshCw,
+  Server,
+  SquareTerminal,
+} from "lucide-react";
 import { version } from "../../package.json";
 import { useEditor } from "../editor/EditorProvider";
+import { useUpdates } from "../update/UpdateProvider";
+import { useSpin } from "../ui/useSpin";
 
 export type Page = "sync" | "sftp" | "hosts" | "terminal" | "editor";
 
@@ -24,6 +36,8 @@ type SidebarProps = {
 
 export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapsed }: SidebarProps) {
   const unsaved = useEditor().tabs.filter((tab) => tab.dirty).length;
+  const updates = useUpdates();
+  const checkSpin = useSpin(updates.checking);
   return (
     <nav className="sidebar" aria-label="Main">
       {ITEMS.map(({ page: target, label, Icon }) => (
@@ -49,8 +63,33 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
         </button>
       ))}
 
+      {updates.available && (
+        <button
+          type="button"
+          className="nav-item sidebar-update"
+          onClick={updates.open}
+          aria-label={`Update to ${updates.available}`}
+          data-tip={collapsed ? `Update to ${updates.available}` : undefined}
+        >
+          <ArrowDownToLine size={18} strokeWidth={1.75} />
+          <span className="nav-label">Update to {updates.available}</span>
+        </button>
+      )}
+
       <div className="sidebar-foot">
         <span className="nav-label">Version {version}</span>
+        <button
+          type="button"
+          className="icon-btn sidebar-check"
+          onClick={() => {
+            checkSpin.spin();
+            updates.check();
+          }}
+          aria-label="Check for updates"
+          data-tip="Check for updates"
+        >
+          <RefreshCw ref={checkSpin.icon} size={14} strokeWidth={1.75} />
+        </button>
         <button
           type="button"
           className="icon-btn sidebar-toggle"

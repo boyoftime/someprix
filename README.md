@@ -20,10 +20,11 @@
 ## Why Someprix
 
 - **Free.** No account, no subscription, no ads, no tracking. It only talks to your own servers.
-- **Lightweight.** The installer is under 4 MB, and the app starts in a moment.
+- **Lightweight.** The installer is under 5 MB, and the app starts in a moment.
 - **Fast.** Transfers run over several connections at once. Fast mode (⚡) packs many files into one compressed archive and unpacks it on the server, so a slow upload line carries far less.
 - **All in one place.** Sync, file browser, terminal and code editor share the same saved servers. You log in once.
 - **Modern.** A clean interface with dark and light themes, smooth progress bars, live transfer speed and keyboard shortcuts.
+- **Always up to date.** Someprix checks GitHub for new versions and updates itself in one click. Your servers, passwords and settings stay as they are.
 
 ## What you get
 
@@ -86,6 +87,8 @@ Double-click a text file, on your computer or on the server, and it opens in the
 
 Needs Windows 10 or 11 (64-bit).
 
+After that, Someprix keeps itself current. When a new version is out, an **Update** button appears at the bottom of the sidebar; you can also check any time with the refresh button next to the version number.
+
 > The installer isn't code-signed yet, so Windows may show **"Windows protected your PC"**. Click **More info → Run anyway**.
 
 ## Keyboard shortcuts
@@ -113,3 +116,13 @@ npm run tauri build   # build the installer into src-tauri/target/release/bundle
 ```
 
 Built with [Tauri 2](https://tauri.app/), React, TypeScript and Rust, with [russh](https://github.com/Eugeny/russh) for SSH, [CodeMirror](https://codemirror.net/) for the editor and [xterm.js](https://xtermjs.org/) for the terminal.
+
+### Releasing an update
+
+Raise the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then run:
+
+```bash
+npm run release -- --notes "What changed"
+```
+
+This builds the signed installer and publishes it on GitHub with `latest.json`, the file installed copies check for updates. It needs the [GitHub CLI](https://cli.github.com/) and the update signing key at `~/.tauri/someprix.key`.
