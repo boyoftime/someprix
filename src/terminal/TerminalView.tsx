@@ -56,13 +56,22 @@ const PALETTES: Record<"dark" | "light", ITheme> = {
   },
 };
 
+/** The 256-colour slot plain shell prompts are drawn in, and its deep orange-yellow per theme. */
+const PROMPT_COLOUR = 214;
+const PROMPT_SHADE = { dark: "#ffa630", light: "#b45f00" };
+
 function themeNow(): ITheme {
   const root = document.documentElement;
   const css = getComputedStyle(root);
   const token = (name: string) => css.getPropertyValue(name).trim();
   const muted = token("--text-muted");
+  const mode = root.dataset.theme === "light" ? "light" : "dark";
+  // Only the prompt's slot is set; the other extended colours keep their usual values.
+  const extendedAnsi: string[] = [];
+  extendedAnsi[PROMPT_COLOUR - 16] = PROMPT_SHADE[mode];
   return {
-    ...PALETTES[root.dataset.theme === "light" ? "light" : "dark"],
+    ...PALETTES[mode],
+    extendedAnsi,
     background: token("--editor-bg"),
     foreground: token("--text"),
     cursor: token("--accent"),
@@ -74,6 +83,23 @@ function themeNow(): ITheme {
 }
 
 const encoder = new TextEncoder();
+
+/** A plain prompt starting a line ("root@vps:~/apps# "): after a newline, or after the window-title
+ *  code shells print just before it. */
+const PLAIN_PROMPT = /(^|\n|\x07)([a-z_][\w.-]*@[\w.-]+:(?:~|\/)[^\x00-\x1f\x7f#$]*[#$] )/gi;
+const PROMPT_ON = `\x1b[1;38;5;${PROMPT_COLOUR}m`;
+const PROMPT_OFF = "\x1b[0m";
+
+/** Shell output with plain prompts drawn in the prompt colour, so they stand out from what
+ *  commands print. Prompts the server already colours don't match and are left alone. */
+function colourPrompts(bytes: Uint8Array): Uint8Array {
+  if (!bytes.includes(0x40)) return bytes; // No "@": no prompt.
+  // One character per byte, so multi-byte text passes through untouched.
+  let text = "";
+  for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
+  const coloured = text.replace(PLAIN_PROMPT, `$1${PROMPT_ON}$2${PROMPT_OFF}`);
+  return coloured === text ? bytes : Uint8Array.from(coloured, (c) => c.charCodeAt(0));
+}
 
 /** The folder in a prompt or window title, like "root@vps:~/apps# ls" or "root@vps: ~/apps". */
 function folderIn(text: string) {
@@ -213,7 +239,7 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
         output.onmessage = (message) => {
           if (token !== generation || disposed) return;
           if (message instanceof ArrayBuffer) {
-            typeahead.received(new Uint8Array(message));
+            typeahead.received(colourPrompts(new Uint8Array(message)));
           } else {
             endedEarly = remote === null;
             ended(message);
