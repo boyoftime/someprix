@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Update signing key: private, never on GitHub
+keys/
+*.key

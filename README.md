@@ -125,4 +125,4 @@ Raise the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/
 npm run release -- --notes "What changed"
 ```
 
-This builds the signed installer and publishes it on GitHub with `latest.json`, the file installed copies check for updates. It needs the [GitHub CLI](https://cli.github.com/) and the update signing key at `~/.tauri/someprix.key`.
+This builds the signed installer and publishes it on GitHub with `latest.json`, the file installed copies check for updates. It needs the [GitHub CLI](https://cli.github.com/) and the update signing key in `keys/someprix.key` (never committed).

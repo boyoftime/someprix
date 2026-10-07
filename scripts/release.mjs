@@ -5,8 +5,9 @@
 //   npm run release -- --no-publish              build and write latest.json only
 //
 // The version comes from package.json; raise it there, in src-tauri/tauri.conf.json and in
-// src-tauri/Cargo.toml first. Signing uses the private key in ~/.tauri/someprix.key (or the
-// TAURI_SIGNING_PRIVATE_KEY environment variable). Without that key, updates can't be published.
+// src-tauri/Cargo.toml first. Signing uses the private key in keys/someprix.key (kept out of git),
+// else ~/.tauri/someprix.key, or the TAURI_SIGNING_PRIVATE_KEY environment variable. Without that
+// key, updates can't be published.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -35,8 +36,9 @@ if (conf !== version || cargo !== version) {
 }
 const notes = option("--notes") ?? `Someprix ${version}`;
 
-const key = process.env.TAURI_SIGNING_PRIVATE_KEY ?? join(homedir(), ".tauri", "someprix.key");
-if (!process.env.TAURI_SIGNING_PRIVATE_KEY && !existsSync(key)) fail(`signing key not found at ${key}`);
+const keyFiles = [join(root, "keys", "someprix.key"), join(homedir(), ".tauri", "someprix.key")];
+const key = process.env.TAURI_SIGNING_PRIVATE_KEY ?? keyFiles.find((file) => existsSync(file));
+if (!key) fail(`signing key not found in ${keyFiles.join(" or ")}`);
 
 if (publish) {
   const released = spawnSync("gh", ["release", "view", `v${version}`, "--repo", REPO], { stdio: "ignore" });
