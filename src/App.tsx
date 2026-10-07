@@ -18,23 +18,10 @@ import { EditorPage } from "./editor/EditorPage";
 import { TerminalProvider } from "./terminal/TerminalProvider";
 import { TerminalPage } from "./terminal/TerminalPage";
 import { UpdateProvider } from "./update/UpdateProvider";
+import { remember, remembered } from "./lib/storage";
 
 /** Whether the sidebar is folded to icons, kept between launches. */
 const SIDEBAR = "someprix.sidebar";
-const remembered = (key: string) => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const remember = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Not remembered; it still applies until the app closes.
-  }
-};
 
 type Overlay = "editor" | "terminal";
 type BasePage = Exclude<Page, Overlay>;

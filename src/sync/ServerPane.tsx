@@ -46,6 +46,7 @@ import { DeleteDialog } from "./DeleteDialog";
 import { PropertiesDialog } from "../ui/PropertiesDialog";
 import { useOpenInEditor } from "../editor/EditorProvider";
 import { useOpenTerminal } from "../terminal/TerminalProvider";
+import { forget, remember, remembered } from "../lib/storage";
 import { isTextFile } from "../editor/languages";
 import connectingAnimation from "../assets/lottie/connecting.json";
 
@@ -69,6 +70,8 @@ type ServerPaneProps = {
   download?: { onDownload: (paths: string[]) => void };
   /** Fast mode: deletes run as one server command. */
   fastDelete?: boolean;
+  /** Remember the open folder per host under this name, to come back to it after a reconnect or restart. */
+  rememberAs?: string;
 };
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -107,6 +110,7 @@ export function ServerPane({
   onCwdChange,
   download,
   fastDelete = false,
+  rememberAs,
 }: ServerPaneProps) {
   const { hosts, connected, connecting, connect, disconnect, homes, refreshConnections, notify, lastPush } =
     useAppData();
@@ -148,15 +152,27 @@ export function ServerPane({
   entriesRef.current = entries;
   const previousPaths = useRef<ReadonlySet<string>>(new Set());
 
-  // Open the start folder if there is one, else the login's home folder.
+  // Where this pane last was on this host, kept between reconnects and launches.
+  const memoryKey = rememberAs && host ? `someprix.${rememberAs}.remote.${host.id}` : null;
+  /** Where to open without a remembered folder: the start folder, else the login's home. */
+  const fallbackDir = () => (host ? (startDir ?? homes.get(host.id) ?? "/") : "/");
+  // The remembered folder being reopened, until its listing arrives (it may have gone since).
+  const reopening = useRef<string | null>(null);
+
+  // Connected (again): carry on in the folder from last time, else the start folder.
   useEffect(() => {
     setEntries(null);
     clear();
     setToDelete(null);
-    setCwd(isConnected && host ? (startDir ?? homes.get(host.id) ?? "/") : null);
+    const last = memoryKey ? remembered(memoryKey) : null;
+    reopening.current = last;
+    setCwd(isConnected && host ? (last ?? fallbackDir()) : null);
   }, [host?.id, isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => onCwdChange?.(cwd), [cwd]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    onCwdChange?.(cwd);
+    if (cwd && memoryKey) remember(memoryKey, cwd);
+  }, [cwd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!host || !isConnected || !cwd) return;
@@ -167,11 +183,19 @@ export function ServerPane({
       .listRemote(host.id, cwd)
       .then((list) => {
         if (!current) return;
+        reopening.current = null;
         previousPaths.current = new Set((entriesRef.current ?? []).map((e) => e.path));
         setEntries(list);
       })
       .catch((e) => {
         if (!current) return;
+        // The folder from last time is gone (or can't be opened): start from the usual place.
+        if (reopening.current === cwd && cwd !== fallbackDir()) {
+          reopening.current = null;
+          if (memoryKey) forget(memoryKey);
+          setCwd(fallbackDir());
+          return;
+        }
         setError(errorMessage(e));
         void refreshConnections();
       })

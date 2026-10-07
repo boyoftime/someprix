@@ -120,6 +120,7 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
         onSelectHost={selectHost}
         onAddHost={() => setAddingHost(true)}
         startDir={destination}
+        rememberAs="sync"
         markedDir={destination}
         folderMenu={pushHere}
         footer={destinationFooter}

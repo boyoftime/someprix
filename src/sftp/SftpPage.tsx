@@ -7,6 +7,7 @@ import { ServerPane } from "../sync/ServerPane";
 import { Splitter, useSplit } from "../sync/Splitter";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
 import { loadFast, saveFast } from "../ui/FastToggle";
+import { remember, remembered } from "../lib/storage";
 import type { MenuItem } from "../ui/ContextMenu";
 import { DragProvider, type DragKind } from "./drag";
 import { LocalBrowser, type Revealed } from "./LocalBrowser";
@@ -14,27 +15,12 @@ import { TransferBar, type FinishedTransfer } from "./TransferBar";
 
 const LAST_HOST = "someprix.sftp.host";
 const FAST_SFTP = "someprix.sftp.fast";
-const lastFolderKey = (hostId: string) => `someprix.sftp.remote.${hostId}`;
 /** How long the outcome of a transfer stays in the footer. */
 const OUTCOME_FOR = 6000;
 
 /** One upload or download: these paths, into that folder (on the server, or on this computer). */
 type Job = { id: number; kind: DragKind; hostId: string; sources: string[]; dir: string; fast: boolean };
 
-const remembered = (key: string) => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const remember = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Not remembered; fine.
-  }
-};
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -199,7 +185,7 @@ export function SftpPage() {
           fastDelete={fast}
           onSelectHost={selectHost}
           onAddHost={() => setAddingHost(true)}
-          startDir={hostId ? remembered(lastFolderKey(hostId)) : null}
+          rememberAs="sftp"
           folderMenu={uploadHere}
           acceptsDrops
           download={{
@@ -208,10 +194,7 @@ export function SftpPage() {
               else notify("Downloads folder not found", "error");
             },
           }}
-          onCwdChange={(dir) => {
-            setRemoteDir(dir);
-            if (dir && hostId) remember(lastFolderKey(hostId), dir);
-          }}
+          onCwdChange={setRemoteDir}
           footer={() => (
             <TransferBar
               direction={active?.kind ?? "upload"}
