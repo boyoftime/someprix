@@ -1,6 +1,6 @@
 [package]
 name = "someprix"
-version = "1.9.0"
+version = "1.9.1"
 description = "Someprix desktop app"
 authors = ["Someprix"]
 edition = "2021"
