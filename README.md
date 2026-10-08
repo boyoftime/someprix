@@ -37,6 +37,8 @@
 
 Open your project folder and Someprix watches it. Every file you save, add or delete is marked straight away: amber for changed, green for new, red for deleted. Pick your server and the folder to deploy to once, then press **Push to server** and only those files go up. You can also push a single file or folder from the right-click menu.
 
+Before pushing, Someprix checks whether anyone changed those files on the server since your last push. If they did, nothing is overwritten until you choose, file by file: **Overwrite**, **Skip** for now, **Get server version** (your local copy goes to the Recycle Bin), or **Compare** the two side by side first.
+
 ### SFTP: drag files both ways
 
 Your computer on the left, the server on the right. Drag files across to upload or download, or use the right-click menu.

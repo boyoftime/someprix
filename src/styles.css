@@ -1,6 +1,12 @@
 /* ---------- Tokens ---------- */
 
 :root {
+  /* Compare: server lines in amber (changed there), this computer's in blue */
+  --compare-server-line: color-mix(in srgb, var(--modified) 9%, transparent);
+  --compare-server-text: color-mix(in srgb, var(--modified) 30%, transparent);
+  --compare-local-line: color-mix(in srgb, var(--accent) 9%, transparent);
+  --compare-local-text: color-mix(in srgb, var(--accent) 28%, transparent);
+
   --font-ui: "Manrope Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
 
@@ -747,6 +753,8 @@ input::-ms-clear {
   z-index: 50;
   display: grid;
   place-items: center;
+  /* Fixed tracks, so a dialog wider or taller than the window shrinks to fit (max-width/height). */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   padding: 24px;
   background: var(--overlay);
   animation: fade-in 120ms linear;
@@ -1733,6 +1741,188 @@ input::-ms-clear {
   border-radius: 50%;
   vertical-align: middle;
   animation: spin 700ms linear infinite;
+}
+
+/* Push dialog: files that also changed on the server, each needing a choice */
+
+.conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conflicts-head {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--modified) 13%, transparent);
+}
+
+.conflicts-head svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--modified);
+}
+
+.conflicts-title {
+  margin: 0 0 3px;
+  font-weight: 700;
+}
+
+.conflict-list {
+  max-height: 300px;
+  margin: 0;
+  padding: 2px 4px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+  list-style: none;
+}
+
+.conflict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px 8px 8px;
+}
+
+.conflict + .conflict {
+  border-top: 1px solid var(--line);
+}
+
+.conflict-file {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.conflict-why {
+  color: var(--modified);
+  font-size: 12px;
+}
+
+.conflict-choice {
+  flex: none;
+  padding: 2px;
+  border-radius: 8px;
+}
+
+.conflict-compare {
+  flex: none;
+}
+
+.conflict-choice button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.conflict-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.conflict-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.conflict-all .btn {
+  font-weight: 600;
+}
+
+.push-checking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Compare: the server's copy and this computer's side by side */
+
+.compare-path {
+  color: var(--text);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.compare-heads {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: -6px;
+}
+
+.compare-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-left: 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.compare-head::before {
+  content: "";
+  flex: none;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.compare-head[data-side="server"]::before {
+  background: var(--modified);
+}
+
+.compare-when {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.compare-view {
+  position: relative;
+  height: min(62vh, 560px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--editor-bg);
+}
+
+.compare-host,
+.compare-host .cm-mergeView {
+  height: 100%;
+}
+
+.compare-host .cm-mergeView {
+  overflow: auto;
+}
+
+.compare-host .cm-mergeViewEditor + .cm-mergeViewEditor {
+  border-left: 1px solid var(--line);
+}
+
+.compare-view .pane-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
 }
 
 /* Push progress: percentage, a filling bar, and what's happening underneath */

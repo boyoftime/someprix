@@ -11,10 +11,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
+    conflicts::{self, Conflict},
     edit, fast,
     turbo::{self, Meter},
     files::{self, PART_SUFFIX},
-    project::{self, Change, ChangeKind, LocalEntry, SharedProject, Sig, CHANGES_EVENT},
+    project::{self, Change, ChangeKind, LocalEntry, ServerSig, SharedProject, Sig, CHANGES_EVENT},
     ssh::{self, ConnectOutcome, RemoteEntry, Ssh},
     store::{self, AuthMethod, Host, ProjectLink, Store},
     terminal::Terminals,
@@ -426,6 +427,7 @@ pub struct PushReport {
 }
 
 /// Pushes the project's changes, or with `only`, just the changes at or under those paths.
+/// Changes listed in `skip` stay behind this time.
 #[tauri::command]
 pub async fn project_push(
     app: AppHandle,
@@ -433,12 +435,14 @@ pub async fn project_push(
     include_deletions: bool,
     only: Option<Vec<String>>,
     fast: Option<bool>,
+    skip: Option<Vec<String>>,
 ) -> Result<PushReport, String> {
     if state.pushing.swap(true, Ordering::SeqCst) {
         return Err("Push in progress".into());
     }
     let mut report = PushReport::default();
-    let result = push(&app, &state, include_deletions, only.as_deref(), fast.unwrap_or(false), &mut report).await;
+    let skip = skip.unwrap_or_default();
+    let result = push(&app, &state, include_deletions, only.as_deref(), &skip, fast.unwrap_or(false), &mut report).await;
     state.pushing.store(false, Ordering::SeqCst);
 
     // Whatever made it to the server stays marked as pushed, even if a later file failed.
@@ -446,6 +450,7 @@ pub async fn project_push(
         let guard = state.project.lock().unwrap();
         guard.as_ref().map(|project| {
             project.save_baseline();
+            project.save_server();
             project.changes()
         })
     };
@@ -472,7 +477,7 @@ async fn push_packed(
     uploads: &[Change],
     bytes_total: u64,
     emit: &(dyn Fn(usize, Option<&str>, u64, Option<&'static str>) + Sync),
-    mark: &(dyn Fn(&str, Option<Sig>) + Sync),
+    mark: &(dyn Fn(&str, Option<(Sig, Option<ServerSig>)>) + Sync),
 ) -> Result<(), String> {
     let id = uuid::Uuid::new_v4().simple().to_string();
     let (local, mut archive) = fast::create("someprix-push")?;
@@ -539,8 +544,13 @@ async fn push_packed(
 
     emit(packed.len(), None, bytes_total, Some("unpacking"));
     fast::unpack_remote(conn, remote_dir, &archive_name).await?;
+    // tar sets each file's size and modified time (to the second) from the archive.
     for file in packed {
-        mark(file.path, Some(file.sig));
+        let server = ServerSig {
+            size: file.sig.size,
+            mtime: file.sig.mtime / 1000,
+        };
+        mark(file.path, Some((file.sig, Some(server))));
     }
     Ok(())
 }
@@ -558,6 +568,7 @@ async fn push(
     state: &AppState,
     include_deletions: bool,
     only: Option<&[String]>,
+    skip: &[String],
     fast: bool,
     report: &mut PushReport,
 ) -> Result<(), String> {
@@ -568,11 +579,12 @@ async fn push(
     let _deadlines: Vec<_> = lanes.iter().map(|lane| lane.transfer_deadline()).collect();
     let conn = &lanes[0];
     let root = PathBuf::from(&info.root);
+    let destination = conflicts::target_key(&host_id, &remote_dir);
 
     let (deletions, uploads): (Vec<Change>, Vec<Change>) = info
         .changes
         .into_iter()
-        .filter(|c| in_scope(&c.path, only))
+        .filter(|c| in_scope(&c.path, only) && !skip.contains(&c.path))
         .partition(|c| c.kind == ChangeKind::Deleted);
     let deletions = if include_deletions { deletions } else { Vec::new() };
     let total = uploads.len() + deletions.len();
@@ -595,10 +607,13 @@ async fn push(
         );
     };
     let progress = |done: usize, path: Option<&str>, bytes_done: u64| emit(done, path, bytes_done, None);
-    let mark = |rel: &str, sig: Option<Sig>| {
+    // A pushed file: what was sent, and how the server's copy looks now (for the next push's
+    // conflict check). `None`: deleted on the server.
+    let mark = |rel: &str, pushed: Option<(Sig, Option<ServerSig>)>| {
         let mut guard = state.project.lock().unwrap();
         if let Some(project) = guard.as_mut().filter(|p| p.root == root) {
-            project.mark_pushed(rel, sig);
+            project.mark_pushed(rel, pushed.map(|(sig, _)| sig));
+            project.record_server(&destination, rel, pushed.and_then(|(_, server)| server));
         }
     };
 
@@ -644,7 +659,8 @@ async fn push(
                 .await?;
             }
             meter.finish_file();
-            mark(&change.path, Some(sig));
+            let server = conflicts::server_sig(&lane, &target).await.ok().flatten();
+            mark(&change.path, Some((sig, server)));
             Ok(true)
         });
         turbo::with_ticker(pushing, || progress(meter.done(), meter.current().as_deref(), meter.bytes())).await?;
@@ -658,6 +674,115 @@ async fn push(
         report.deleted += 1;
     }
     progress(total, None, bytes_total);
+    Ok(())
+}
+
+/// Before a push: the files about to be pushed (or deleted) that someone changed on the server
+/// since they were last pushed, or that are new here but already there.
+#[tauri::command]
+pub async fn project_conflicts(
+    state: State<'_, AppState>,
+    include_deletions: bool,
+    only: Option<Vec<String>>,
+) -> Result<Vec<Conflict>, String> {
+    let info = project_info(&state).ok_or("No project open")?;
+    let host_id = info.host_id.ok_or("No server selected")?;
+    let remote_dir = info.remote_dir.ok_or("No destination set")?;
+    let conn = state.ssh.get(&host_id).await?;
+    let changes: Vec<Change> = info
+        .changes
+        .into_iter()
+        .filter(|c| in_scope(&c.path, only.as_deref()) && (include_deletions || c.kind != ChangeKind::Deleted))
+        .collect();
+    let target = conflicts::target_key(&host_id, &remote_dir);
+    conflicts::find(&conn, &state.project, Path::new(&info.root), &remote_dir, &target, changes).await
+}
+
+/// Replaces project files with the server's copies, so they stop counting as changes. The local
+/// versions go to the Recycle Bin. Returns how many files were replaced.
+#[tauri::command]
+pub async fn project_take_server(app: AppHandle, state: State<'_, AppState>, paths: Vec<String>) -> Result<usize, String> {
+    let info = project_info(&state).ok_or("No project open")?;
+    let host_id = info.host_id.ok_or("No server selected")?;
+    let remote_dir = info.remote_dir.ok_or("No destination set")?;
+    let conn = state.ssh.get(&host_id).await?;
+    let root = PathBuf::from(&info.root);
+    let target = conflicts::target_key(&host_id, &remote_dir);
+
+    let mut taken = 0;
+    let mut result = Ok(());
+    for rel in &paths {
+        result = take_server(&state, &conn, &root, &remote_dir, &target, rel).await;
+        if result.is_err() {
+            break;
+        }
+        taken += 1;
+    }
+
+    let changes = {
+        let guard = state.project.lock().unwrap();
+        guard.as_ref().map(|project| {
+            project.save_baseline();
+            project.save_server();
+            project.changes()
+        })
+    };
+    if let Some(changes) = changes {
+        let _ = app.emit(CHANGES_EVENT, changes);
+    }
+    result.map(|()| taken)
+}
+
+async fn take_server(
+    state: &AppState,
+    conn: &ssh::Connection,
+    root: &Path,
+    remote_dir: &str,
+    target: &str,
+    rel: &str,
+) -> Result<(), String> {
+    let remote = ssh::join(remote_dir, rel);
+    let local = root.join(rel);
+    let name = local.file_name().ok_or("Bad path")?.to_string_lossy().into_owned();
+    // It arrives next to the old file first (the change tracker ignores it there), so a failed
+    // download leaves the local file as it was.
+    let part = local.with_file_name(format!("{name}{PART_SUFFIX}"));
+    if let Some(dir) = local.parent() {
+        tokio::fs::create_dir_all(dir)
+            .await
+            .map_err(|e| format!("Create failed: {}: {e}", dir.display()))?;
+    }
+    if let Err(error) = conn.download_file(&remote, &part, |_| true).await {
+        let _ = tokio::fs::remove_file(&part).await;
+        return Err(error);
+    }
+    if local.exists() {
+        let old = local.clone();
+        let trashed = tauri::async_runtime::spawn_blocking(move || trash::delete(&old))
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Err(error) = trashed {
+            let _ = tokio::fs::remove_file(&part).await;
+            return Err(format!("Recycle Bin failed: {}: {error}", local.display()));
+        }
+    }
+    tokio::fs::rename(&part, &local)
+        .await
+        .map_err(|e| format!("Write failed: {}: {e}", local.display()))?;
+
+    let sig = {
+        let path = local.clone();
+        tauri::async_runtime::spawn_blocking(move || project::signature(&path))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| format!("Read failed: {}: {e}", local.display()))?
+    };
+    let server = conflicts::server_sig(conn, &remote).await.ok().flatten();
+    let mut guard = state.project.lock().unwrap();
+    if let Some(project) = guard.as_mut().filter(|p| p.root == root) {
+        project.mark_pushed(rel, Some(sig));
+        project.record_server(target, rel, server);
+    }
     Ok(())
 }
 

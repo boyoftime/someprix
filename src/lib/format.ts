@@ -10,6 +10,17 @@ export function formatTimeLeft(seconds: number) {
   return minutes < 60 ? `${minutes} min left` : `${Math.round(minutes / 60)} h left`;
 }
 
+/** How long ago, the way people say it: "just now", "5 min ago", "3 h ago", "2 days ago", then a date. */
+export function formatAgo(epochSeconds: number, now = Date.now()) {
+  const seconds = Math.max(0, now / 1000 - epochSeconds);
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  const days = Math.floor(seconds / 86400);
+  if (days < 7) return days === 1 ? "yesterday" : `${days} days ago`;
+  return `on ${new Date(epochSeconds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
 /** A byte count for people: "512 B", "3.4 KB", "12 MB". */
 export function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;

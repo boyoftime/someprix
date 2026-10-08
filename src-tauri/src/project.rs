@@ -39,6 +39,8 @@ const DEFAULT_IGNORES: &[&str] = &[
     "*~",
     "*___jb_tmp___",
     "*___jb_old___",
+    // A server copy on its way in (see project_take_server).
+    "*.someprix-part",
 ];
 
 /// How long the folder has to be quiet before changes are re-checked (editors often write a
@@ -51,6 +53,18 @@ pub struct Sig {
     pub mtime: u64,
     pub hash: u64,
 }
+
+/// A pushed file as the server reported it right after the push: size and modified time (whole
+/// seconds, as SFTP gives it). The next push compares the server's copy with it to tell whether
+/// someone changed the file there in the meantime.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerSig {
+    pub size: u64,
+    pub mtime: u64,
+}
+
+/// What each pushed file looks like on the server, per destination ("host:folder").
+type ServerRecord = HashMap<String, HashMap<String, ServerSig>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -80,6 +94,8 @@ pub struct Project {
     ignore: Gitignore,
     baseline: HashMap<String, Sig>,
     baseline_file: PathBuf,
+    server: ServerRecord,
+    server_file: PathBuf,
     changes: BTreeMap<String, ChangeKind>,
     /// Paths the user excluded from pushing: never counted as changes, never pushed.
     excluded: Vec<String>,
@@ -114,6 +130,11 @@ pub fn open(
     let saved: Option<HashMap<String, Sig>> = fs::read_to_string(&baseline_file)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok());
+    let server_file = baseline_file.with_extension("server.json");
+    let server: ServerRecord = fs::read_to_string(&server_file)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
 
     let mut project = Project {
         root: root.to_path_buf(),
@@ -121,6 +142,8 @@ pub fn open(
         ignore,
         baseline: HashMap::new(),
         baseline_file,
+        server,
+        server_file,
         changes: BTreeMap::new(),
         excluded,
         _watcher: watcher,
@@ -295,6 +318,35 @@ impl Project {
     pub fn save_baseline(&self) {
         if let Ok(text) = serde_json::to_string(&self.baseline) {
             let _ = write_atomic(&self.baseline_file, text.as_bytes());
+        }
+    }
+
+    pub fn save_server(&self) {
+        if let Ok(text) = serde_json::to_string(&self.server) {
+            let _ = write_atomic(&self.server_file, text.as_bytes());
+        }
+    }
+
+    /// What `rel` was when last pushed (or when the folder was first opened).
+    pub fn baseline_sig(&self, rel: &str) -> Option<Sig> {
+        self.baseline.get(rel).copied()
+    }
+
+    /// What `rel` looked like on the server at `target` right after it was last pushed there.
+    pub fn server_sig(&self, target: &str, rel: &str) -> Option<ServerSig> {
+        self.server.get(target)?.get(rel).copied()
+    }
+
+    /// Records what `rel` looks like on the server at `target` now (`None`: it's gone from there).
+    pub fn record_server(&mut self, target: &str, rel: &str, sig: Option<ServerSig>) {
+        let files = self.server.entry(target.to_string()).or_default();
+        match sig {
+            Some(sig) => {
+                files.insert(rel.to_string(), sig);
+            }
+            None => {
+                files.remove(rel);
+            }
         }
     }
 

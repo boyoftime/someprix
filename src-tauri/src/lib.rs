@@ -1,4 +1,5 @@
 mod commands;
+mod conflicts;
 mod edit;
 mod fast;
 mod files;
@@ -49,6 +50,8 @@ pub fn run() {
             commands::project_set_target,
             commands::project_exclude,
             commands::project_push,
+            commands::project_conflicts,
+            commands::project_take_server,
             commands::local_home,
             commands::local_list,
             commands::local_downloads,

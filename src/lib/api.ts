@@ -82,6 +82,18 @@ export type ItemProps = {
 };
 export type PushReport = { uploaded: number; deleted: number; fast?: boolean };
 
+/** A file a push would send (or delete) whose server copy changed since it was last pushed. */
+export type Conflict = {
+  path: string;
+  /** The local change the push would send. */
+  kind: ChangeKind;
+  /** "changed": changed on the server since the last push. "exists": new here, but the server has a different file by that name. */
+  reason: "changed" | "exists";
+  serverSize: number;
+  /** Seconds since 1970. */
+  serverModified: number;
+};
+
 /** A file or folder anywhere on this computer (the SFTP page's local side). */
 export type LocalFsEntry = { name: string; path: string; isDir: boolean; size: number; modified: number | null };
 export type UploadReport = {
@@ -152,9 +164,14 @@ export const api = {
     call<void>("project_set_target", { hostId, remoteDir }),
   /** Excludes project paths from pushing (or, with `exclude` false, includes them again). */
   excludeFromPush: (paths: string[], exclude: boolean) => call<ProjectInfo>("project_exclude", { paths, exclude }),
-  /** Pushes every change, or with `only`, the changes at or under those project paths. */
-  push: (includeDeletions: boolean, only?: string[], fast = false) =>
-    call<PushReport>("project_push", { includeDeletions, only: only ?? null, fast }),
+  /** Pushes every change, or with `only`, the changes at or under those project paths; `skip` stays behind. */
+  push: (includeDeletions: boolean, only?: string[], fast = false, skip: string[] = []) =>
+    call<PushReport>("project_push", { includeDeletions, only: only ?? null, fast, skip }),
+  /** The files a push would send that someone changed on the server since they were last pushed. */
+  conflicts: (includeDeletions: boolean, only?: string[]) =>
+    call<Conflict[]>("project_conflicts", { includeDeletions, only: only ?? null }),
+  /** Replaces project files with the server copies; the local ones go to the Recycle Bin. */
+  takeServer: (paths: string[]) => call<number>("project_take_server", { paths }),
 
   localHome: () => call<string>("local_home"),
   /** Lists a folder on this computer; an empty path lists the drives. */
