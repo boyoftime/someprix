@@ -89,10 +89,19 @@ if (withCi && buildFirst) {
     if (list.status !== 0) return [];
     return JSON.parse(list.stdout || "[]").filter((r) => r.status !== "completed" || r.conclusion === "success");
   };
+  // A push starts the build by itself; give a fresh one a moment to show up before starting another.
   ciRun = runsFor()[0] ?? null;
+  for (let i = 0; i < 5 && !ciRun; i++) {
+    pause(4000);
+    ciRun = runsFor()[0] ?? null;
+  }
   if (!ciRun) {
     console.log("Starting the Mac and Linux build on GitHub...");
     const started = gh("workflow", "run", WORKFLOW, "--ref", "main");
+    if (started.status !== 0 && /404|not found/i.test(started.stderr)) {
+      fail(`GitHub doesn't know the Mac and Linux build yet. It learns about it from a push, so push
+  a new commit (git commit --allow-empty -m "Build" && git push) and run this again.`);
+    }
     if (started.status !== 0) fail(`couldn't start the Mac and Linux build:\n${started.stderr}`);
     for (let i = 0; i < 30 && !ciRun; i++) {
       pause(3000);
