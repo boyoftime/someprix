@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="244" height="76" viewBox="0 0 244 76" role="img" aria-label="Download for Windows">
+  <title>Download for Windows</title>
+  <defs>
+    <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f86ff"/>
+      <stop offset="1" stop-color="#2557e6"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.28"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-20%" width="120%" height="150%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#0b2a8a" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g transform="translate(6 4)">
+    <rect width="232" height="64" rx="14" fill="url(#fill)" filter="url(#shadow)"/>
+    <rect width="232" height="64" rx="14" fill="url(#shine)"/>
+    <rect x="0.5" y="0.5" width="231" height="63" rx="13.5" fill="none" stroke="#fff" stroke-opacity="0.22"/>
+    <g transform="translate(22 18) scale(1.1666666666666667)"><g fill="#fff"><rect x="0" y="0" width="11.4" height="11.4" rx="0.8"/><rect x="12.6" y="0" width="11.4" height="11.4" rx="0.8"/><rect x="0" y="12.6" width="11.4" height="11.4" rx="0.8"/><rect x="12.6" y="12.6" width="11.4" height="11.4" rx="0.8"/></g></g>
+    <text x="66" y="27" fill="#fff" fill-opacity="0.82" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="500" letter-spacing="0.2">Download for</text>
+    <text x="65" y="49" fill="#fff" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="21" font-weight="700" letter-spacing="-0.2">Windows</text>
+  </g>
+</svg>

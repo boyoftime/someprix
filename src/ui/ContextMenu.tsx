@@ -11,6 +11,7 @@ import {
 } from "react";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ClipboardPaste, Copy, Scissors, TextSelect, type LucideIcon } from "lucide-react";
+import { shortcut } from "../lib/platform";
 
 export type MenuItem =
   | {
@@ -60,7 +61,7 @@ function textFieldItems(field: TextField): MenuItem[] {
     {
       label: "Cut",
       icon: Scissors,
-      shortcut: "Ctrl+X",
+      shortcut: shortcut("Ctrl+X"),
       disabled: !hasSelection || secret || readOnly,
       onSelect: () => {
         restore();
@@ -70,7 +71,7 @@ function textFieldItems(field: TextField): MenuItem[] {
     {
       label: "Copy",
       icon: Copy,
-      shortcut: "Ctrl+C",
+      shortcut: shortcut("Ctrl+C"),
       disabled: !hasSelection || secret,
       onSelect: () => {
         restore();
@@ -80,7 +81,7 @@ function textFieldItems(field: TextField): MenuItem[] {
     {
       label: "Paste",
       icon: ClipboardPaste,
-      shortcut: "Ctrl+V",
+      shortcut: shortcut("Ctrl+V"),
       disabled: readOnly,
       onSelect: () => {
         void readText()
@@ -96,7 +97,7 @@ function textFieldItems(field: TextField): MenuItem[] {
     {
       label: "Select all",
       icon: TextSelect,
-      shortcut: "Ctrl+A",
+      shortcut: shortcut("Ctrl+A"),
       disabled: field.value.length === 0,
       onSelect: () => {
         field.focus();
@@ -112,7 +113,7 @@ function fallbackItems(event: MouseEvent): MenuItem[] {
   if (field) return textFieldItems(field);
   const selected = window.getSelection()?.toString() ?? "";
   if (selected.trim()) {
-    return [{ label: "Copy", icon: Copy, shortcut: "Ctrl+C", onSelect: () => void writeText(selected) }];
+    return [{ label: "Copy", icon: Copy, shortcut: shortcut("Ctrl+C"), onSelect: () => void writeText(selected) }];
   }
   return [];
 }

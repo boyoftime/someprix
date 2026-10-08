@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
+import { isWindows } from "../lib/platform";
 
 export const inTauri = isTauri();
 
@@ -12,8 +13,8 @@ if (import.meta.hot) {
   import.meta.hot.accept(() => location.reload());
 }
 
-// The window is transparent; the visible frame sits inside a gutter that holds its shadow and
-// the resize handles. In a plain browser tab there is no gutter.
+// On Windows the window is transparent; the visible frame sits inside a gutter that holds its
+// shadow and the resize handles. On Mac and Linux, and in a plain browser tab, there is no gutter.
 document.documentElement.dataset.window = inTauri ? "normal" : "browser";
 
 /** Match --gutter and --frame-radius in styles.css. */
@@ -43,7 +44,9 @@ const boxAt = (r: Rect): FrameBox => ({
   borderRadius: `${RADIUS}px`,
 });
 
-const motionAllowed = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
+/** The frame animates itself only on Windows, inside its transparent window; Mac and Linux
+ *  windows are opaque and play the system's own transitions. */
+const motionAllowed = () => isWindows && !matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Keyframe that draws a frame laid out at `from` into the rect `to` (viewport coordinates). */
 function mapRect(from: Rect, to: Rect, radius: number): Keyframe {

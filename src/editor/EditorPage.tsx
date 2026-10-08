@@ -23,6 +23,7 @@ import { CopyButton } from "../ui/CopyButton";
 import { Dialog } from "../ui/Dialog";
 import { Loading } from "../ui/Loading";
 import { useEditor, type Cursor, type Tab } from "./EditorProvider";
+import { shortcut } from "../lib/platform";
 
 const ICONS: Record<string, ComponentType<LucideProps>> = {
   JSON: FileJson,
@@ -202,7 +203,7 @@ export function EditorPage({ shown }: { shown: boolean }) {
             onClick={() => void editor.save(active.id)}
             disabled={!ready || !active.dirty || active.saving || active.readonly}
             aria-busy={active.saving}
-            data-tip="Save (Ctrl+S)"
+            data-tip={`Save (${shortcut("Ctrl+S")})`}
           >
             {active.saving ? <span className="btn-spinner" aria-hidden="true" /> : <Save size={14} strokeWidth={2} />}
             Save

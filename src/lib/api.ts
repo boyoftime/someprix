@@ -1,5 +1,6 @@
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { pathSeparator } from "./platform";
 
 export type AuthMethod = "password" | "key";
 
@@ -170,11 +171,11 @@ export const api = {
   /** The files a push would send that someone changed on the server since they were last pushed. */
   conflicts: (includeDeletions: boolean, only?: string[]) =>
     call<Conflict[]>("project_conflicts", { includeDeletions, only: only ?? null }),
-  /** Replaces project files with the server copies; the local ones go to the Recycle Bin. */
+  /** Replaces project files with the server copies; the local ones go to the Recycle Bin (Trash). */
   takeServer: (paths: string[]) => call<number>("project_take_server", { paths }),
 
   localHome: () => call<string>("local_home"),
-  /** Lists a folder on this computer; an empty path lists the drives. */
+  /** Lists a folder on this computer; an empty path lists the drives (Windows) or "/". */
   localList: (path: string) => call<LocalFsEntry[]>("local_list", { path }),
   /** Uploads files and folders (with everything inside) into a server folder. */
   upload: (hostId: string, sources: string[], remoteDir: string, fast = false) =>
@@ -186,7 +187,7 @@ export const api = {
   cancelProperties: () => call<void>("properties_cancel"),
   /** The user's Downloads folder. */
   localDownloads: () => call<string>("local_downloads"),
-  /** Moves files and folders on this computer to the Recycle Bin. */
+  /** Moves files and folders on this computer to the Recycle Bin (Trash). */
   trashLocal: (paths: string[]) => call<number>("local_delete", { paths }),
   /** Downloads server files and folders into a folder on this computer. */
   download: (hostId: string, sources: string[], localDir: string, fast = false) =>
@@ -222,10 +223,11 @@ export const api = {
     listen<PushProgress>("project://push-progress", (event) => handler(event.payload)),
 };
 
-/** A project-relative path ("src/app.js") as a full Windows path under the project folder. */
+/** A project-relative path ("src/app.js") as a full path under the project folder on this computer. */
 export function localPath(root: string, rel: string) {
   if (!rel) return root;
-  return `${root.replace(/[\\/]+$/, "")}\\${rel.replace(/\//g, "\\")}`;
+  const base = root.replace(/[\\/]+$/, "");
+  return `${base}${pathSeparator}${pathSeparator === "/" ? rel : rel.replace(/\//g, "\\")}`;
 }
 
 export function joinRemote(dir: string, name: string) {

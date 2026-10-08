@@ -20,8 +20,35 @@ pub struct LocalFsEntry {
     pub modified: Option<u64>,
 }
 
-/// A server name made safe for Windows: characters Windows doesn't allow become "_", trailing
-/// dots and spaces go, and reserved device names (CON, NUL, COM1…) get a "_" in front.
+/// Where deleted files go on this system, as its users know it.
+pub const TRASH: &str = if cfg!(windows) { "Recycle Bin" } else { "Trash" };
+
+/// Moves files and folders to the Recycle Bin (the Trash on Mac and Linux).
+pub fn to_trash<T: AsRef<Path>>(paths: &[T]) -> Result<(), trash::Error> {
+    #[allow(unused_mut)]
+    let mut trash = trash::TrashContext::new();
+    // The default asks Finder to do it, which needs a permission prompt; this doesn't.
+    #[cfg(target_os = "macos")]
+    {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos};
+        trash.set_delete_method(DeleteMethod::NsFileManager);
+    }
+    trash.delete_all(paths)
+}
+
+/// A server name made safe for this computer. On Windows, characters it doesn't allow become
+/// "_", trailing dots and spaces go, and reserved device names (CON, NUL, COM1…) get a "_" in
+/// front; elsewhere only "/" (and control characters) can't be in a name.
+#[cfg(not(windows))]
+pub fn safe_name(name: &str) -> String {
+    let out: String = name.chars().map(|c| if c < ' ' || c == '/' { '_' } else { c }).collect();
+    if out.is_empty() || out == "." || out == ".." {
+        return "_".into();
+    }
+    out
+}
+
+#[cfg(windows)]
 pub fn safe_name(name: &str) -> String {
     let mut out: String = name
         .chars()
@@ -85,6 +112,7 @@ fn is_hidden(meta: &fs::Metadata) -> bool {
     meta.file_attributes() & 0x2 != 0
 }
 
+// Mac and Linux hide dot files by name, which the caller checks.
 #[cfg(not(windows))]
 fn is_hidden(_: &fs::Metadata) -> bool {
     false
@@ -107,7 +135,7 @@ pub fn properties(path: &str, cancelled: &dyn Fn() -> bool) -> Result<ItemProps,
         modified: seconds(meta.modified()),
         created: seconds(meta.created()),
         readonly: Some(meta.permissions().readonly()),
-        hidden: Some(is_hidden(&meta)),
+        hidden: Some(is_hidden(&meta) || (!cfg!(windows) && Path::new(path).file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')))),
         ..Default::default()
     };
     if !meta.is_dir() || link {
@@ -179,15 +207,18 @@ pub fn undo(staged: &[(PathBuf, PathBuf)], created: &[PathBuf]) -> usize {
 
 /// The user's home folder, where the local browser starts.
 pub fn home() -> String {
-    std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| "C:\\".into())
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var(var).unwrap_or_else(|_| if cfg!(windows) { "C:\\" } else { "/" }.into())
 }
 
-/// Lists a folder (dot files included). An empty path lists the drives.
+/// Lists a folder (dot files included). An empty path lists the drives on Windows, and the top
+/// folder ("/") elsewhere.
 pub fn list(path: &str) -> Result<Vec<LocalFsEntry>, String> {
     if path.is_empty() {
-        return Ok(drives());
+        if cfg!(windows) {
+            return Ok(drives());
+        }
+        return list("/");
     }
     let read = fs::read_dir(path).map_err(|e| format!("Open failed: {path}: {e}"))?;
     let mut entries: Vec<LocalFsEntry> = read

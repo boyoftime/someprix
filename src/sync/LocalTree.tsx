@@ -25,6 +25,7 @@ import { useListSelection } from "../ui/useListSelection";
 import { useTypeAhead } from "../ui/useTypeAhead";
 import { useOpenInEditor } from "../editor/EditorProvider";
 import { isTextFile } from "../editor/languages";
+import { fileManager } from "../lib/platform";
 
 type Row = LocalEntry & { deleted?: boolean };
 /** A row as it's showing: the entry and its change, if any. */
@@ -245,12 +246,12 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, o
             onSelect: () => toggle(row),
             disabled: row.deleted,
           },
-          { label: "Open in Explorer", icon: FolderSearch, onSelect: () => attempt(openPath(full)), disabled: gone },
+          { label: `Open in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(openPath(full)), disabled: gone },
         ]
       : [
           ...(isTextFile(row.name) ? [{ label: "Edit", icon: FilePen, onSelect: () => openFile(row), disabled: gone }] : []),
           { label: isTextFile(row.name) ? "Open externally" : "Open", icon: ExternalLink, onSelect: () => attempt(openPath(full)), disabled: gone },
-          { label: "Show in Explorer", icon: FolderSearch, onSelect: () => attempt(revealItemInDir(full)), disabled: gone },
+          { label: `Show in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(revealItemInDir(full)), disabled: gone },
         ];
     const push: MenuItem[] = kind
       ? [

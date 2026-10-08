@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, CircleAlert, File, Folder, TriangleAlert, Zap } from "lucide-react";
 import { errorMessage } from "../state/AppData";
 import { Dialog } from "../ui/Dialog";
+import { trashName } from "../lib/platform";
 
 type DeleteDialogProps = {
   /** Where the items live: a server's name, or "this computer". */
@@ -105,7 +106,7 @@ export function DeleteDialog({
       }
     >
       <p className="dialog-text">
-        {recycle ? "Moves to Recycle Bin" : `Host: ${place}`}
+        {recycle ? `Moves to ${trashName}` : `Host: ${place}`}
         {folders ? ", including folder contents" : ""}
       </p>
       {removeAll && (

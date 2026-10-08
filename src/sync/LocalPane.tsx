@@ -10,6 +10,7 @@ import { Logo } from "../components/Logo";
 import { LocalTree } from "./LocalTree";
 import { ExcludedDialog } from "./ExcludedDialog";
 import type { Change } from "../lib/api";
+import { fileManager } from "../lib/platform";
 
 type LocalPaneProps = {
   /** Why pushing isn't possible right now, or null when it is. */
@@ -137,7 +138,7 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
             disabled: changes.length === 0 || pushBlocker !== null,
           },
           "separator",
-          { label: "Open in Explorer", icon: FolderSearch, onSelect: () => attempt(openPath(root)) },
+          { label: `Open in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(openPath(root)) },
           { label: "Change project", icon: FolderOpen, onSelect: () => void choose() },
           "separator",
           { label: "Copy path", icon: Copy, onSelect: () => attempt(writeText(root)) },

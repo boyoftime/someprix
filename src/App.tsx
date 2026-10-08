@@ -5,6 +5,7 @@ import { useTheme } from "./theme";
 import { useWindowFx } from "./window/useWindowFx";
 import { ResizeHandles } from "./window/ResizeHandles";
 import { inTauri } from "./window/windowFx";
+import { isMac } from "./lib/platform";
 import { AppDataProvider, useAppData } from "./state/AppData";
 import { SyncPage } from "./sync/SyncPage";
 import { HostsPage } from "./hosts/HostsPage";
@@ -108,7 +109,8 @@ export default function App() {
           <Tooltips />
         </ContextMenuProvider>
       </div>
-      {inTauri && !windowFx.maximized && <ResizeHandles />}
+      {/* A Mac window has its own edges to resize by. */}
+      {inTauri && !isMac && !windowFx.maximized && <ResizeHandles />}
     </AppDataProvider>
   );
 }

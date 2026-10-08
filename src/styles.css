@@ -8,7 +8,8 @@
   --compare-local-text: color-mix(in srgb, var(--accent) 28%, transparent);
 
   --font-ui: "Manrope Variable", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, "SF Mono", Menlo, "DejaVu Sans Mono",
+    "Ubuntu Mono", monospace;
 
   --titlebar-h: 48px;
   --sidebar-w: 232px;
@@ -205,6 +206,22 @@ button {
   box-shadow: none;
 }
 
+/* Mac and Linux windows are opaque: the window itself is the frame, and the system draws its
+   edges (and, on a Mac, its corners and shadow). */
+:root:not([data-platform="windows"]) {
+  --gutter: 0px;
+  --frame-radius: 0px;
+}
+
+:root:not([data-platform="windows"]) .app {
+  box-shadow: none;
+}
+
+/* A Mac's own window buttons sit at the left of the title bar. */
+:root[data-platform="macos"] .titlebar {
+  padding-left: 84px;
+}
+
 /* ---------- Resize grips (fill the gutter) ---------- */
 
 .rz {
@@ -248,6 +265,26 @@ button {
 
 :root[data-window="maximized"] .resize-handles {
   display: none;
+}
+
+/* Linux: thin grips along the window's own edges (there's no gutter to fill). */
+:root[data-platform="linux"] .rz-n,
+:root[data-platform="linux"] .rz-s {
+  left: 10px;
+  right: 10px;
+  height: 5px;
+}
+
+:root[data-platform="linux"] .rz-e,
+:root[data-platform="linux"] .rz-w {
+  top: 10px;
+  bottom: 10px;
+  width: 5px;
+}
+
+:root[data-platform="linux"] :is(.rz-nw, .rz-ne, .rz-sw, .rz-se) {
+  width: 10px;
+  height: 10px;
 }
 
 .app-body {
@@ -1351,11 +1388,28 @@ input::-ms-clear {
   padding-right: 6px;
 }
 
+/* A long path keeps its end (the open folder) in view; the start scrolls out to the left and
+   fades, and the wheel brings it back. */
 .crumbs {
   display: flex;
   align-items: center;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.crumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.crumbs[data-cut] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 36px);
+  mask-image: linear-gradient(to right, transparent, #000 36px);
+}
+
+.crumbs > .crumb {
+  flex: none;
 }
 
 .crumbs button {

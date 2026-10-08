@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "Someprix",
+        "width": 1132,
+        "height": 692,
+        "minWidth": 872,
+        "minHeight": 552,
+        "center": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 18, "y": 18 }
+      }
+    ]
+  },
+  "bundle": {
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}

@@ -1,0 +1,106 @@
+# Builds Someprix for Mac and Linux on GitHub's machines (a .dmg can only be made on a Mac, a
+# .deb/.AppImage on Linux). Runs on every push to main, so a build problem shows up early, and
+# when `npm run release` asks for it. The release script downloads these builds, signs their
+# update files with the key on the release machine (it never comes here), and publishes them
+# next to the Windows installer.
+name: Build Mac and Linux
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: Mac (Apple Silicon + Intel)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      # One app for both kinds of Mac. Update files are signed later, on the release machine.
+      - name: Build
+        run: >
+          npx tauri build --target universal-apple-darwin --bundles app,dmg
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Collect
+        run: |
+          bundle=src-tauri/target/universal-apple-darwin/release/bundle
+          mkdir -p out
+          cp "$bundle"/dmg/*.dmg out/Someprix_universal.dmg
+          # The update file: the app, packed the way the updater unpacks it.
+          COPYFILE_DISABLE=1 tar -czf out/Someprix_universal.app.tar.gz -C "$bundle/macos" Someprix.app
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
+
+  linux:
+    name: Linux (deb + AppImage)
+    # The oldest supported Ubuntu, so the build runs on 22.04 and everything newer.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libdbus-1-dev libssl-dev patchelf file build-essential
+
+      - run: npm ci
+
+      - name: Build
+        run: >
+          npx tauri build --bundles deb,appimage
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Collect
+        run: |
+          bundle=src-tauri/target/release/bundle
+          mkdir -p out
+          cp "$bundle"/deb/*.deb out/Someprix_amd64.deb
+          cp "$bundle"/appimage/*.AppImage out/Someprix_amd64.AppImage
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: out/
+          retention-days: 14
+          if-no-files-found: error

@@ -49,6 +49,7 @@ import { useOpenTerminal } from "../terminal/TerminalProvider";
 import { forget, remember, remembered } from "../lib/storage";
 import { isTextFile } from "../editor/languages";
 import connectingAnimation from "../assets/lottie/connecting.json";
+import { Crumbs, type Crumb } from "../ui/Crumbs";
 
 type ServerPaneProps = {
   hostId: string | null;
@@ -78,24 +79,11 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", tim
 
 function Breadcrumbs({ path, onOpen }: { path: string; onOpen: (path: string) => void }) {
   const parts = path.split("/").filter(Boolean);
-  return (
-    <nav className="crumbs" aria-label="Server folder">
-      <button type="button" onClick={() => onOpen("/")}>
-        /
-      </button>
-      {parts.map((part, i) => {
-        const target = `/${parts.slice(0, i + 1).join("/")}`;
-        return (
-          <span key={target} className="crumb">
-            <button type="button" onClick={() => onOpen(target)} aria-current={i === parts.length - 1 ? "location" : undefined}>
-              {part}
-            </button>
-            {i < parts.length - 1 && <span className="crumb-sep">/</span>}
-          </span>
-        );
-      })}
-    </nav>
-  );
+  const items: Crumb[] = [
+    { label: "/", path: "/" },
+    ...parts.map((part, i) => ({ label: part, path: `/${parts.slice(0, i + 1).join("/")}`, sep: i > 0 ? "/" : undefined })),
+  ];
+  return <Crumbs items={items} fullPath={path} label="Server folder" onOpen={onOpen} />;
 }
 
 export function ServerPane({

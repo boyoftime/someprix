@@ -277,11 +277,14 @@ pub struct ProjectInfo {
     excluded: Vec<String>,
 }
 
-/// Project folders are keyed by their path without a trailing separator.
+/// Project folders are keyed by their path without a trailing separator (but a drive or the
+/// top folder keeps its own: "C:\\", "/").
 fn root_key(root: &str) -> String {
     let trimmed = root.trim_end_matches(['\\', '/']);
     if trimmed.ends_with(':') {
         format!("{trimmed}\\")
+    } else if trimmed.is_empty() && root.starts_with('/') {
+        "/".into()
     } else {
         trimmed.to_string()
     }
@@ -758,12 +761,12 @@ async fn take_server(
     }
     if local.exists() {
         let old = local.clone();
-        let trashed = tauri::async_runtime::spawn_blocking(move || trash::delete(&old))
+        let trashed = tauri::async_runtime::spawn_blocking(move || files::to_trash(&[old]))
             .await
             .map_err(|e| e.to_string())?;
         if let Err(error) = trashed {
             let _ = tokio::fs::remove_file(&part).await;
-            return Err(format!("Recycle Bin failed: {}: {error}", local.display()));
+            return Err(format!("{} failed: {}: {error}", files::TRASH, local.display()));
         }
     }
     tokio::fs::rename(&part, &local)
@@ -804,7 +807,7 @@ pub fn local_downloads(app: AppHandle) -> String {
         .unwrap_or_else(|_| files::under(Path::new(&files::home()), "Downloads").to_string_lossy().into_owned())
 }
 
-/// Moves files and folders on this computer to the Recycle Bin, where they can be restored.
+/// Moves files and folders on this computer to the Recycle Bin (Trash), where they can be restored.
 #[tauri::command]
 pub async fn local_delete(paths: Vec<String>) -> Result<usize, String> {
     if let Some(drive) = paths.iter().find(|p| Path::new(p).parent().is_none()) {
@@ -814,15 +817,16 @@ pub async fn local_delete(paths: Vec<String>) -> Result<usize, String> {
         return Err(format!("Not found: {gone}"));
     }
     let count = paths.len();
-    tauri::async_runtime::spawn_blocking(move || trash::delete_all(&paths))
+    tauri::async_runtime::spawn_blocking(move || files::to_trash(&paths))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| match e {
             trash::Error::Os { description, .. } | trash::Error::Unknown { description } => format!(
-                "Recycle failed: {}",
+                "{} failed: {}",
+                files::TRASH,
                 description.trim_start_matches("windows error: ")
             ),
-            other => format!("Recycle failed: {other}"),
+            other => format!("{} failed: {other}", files::TRASH),
         })?;
     Ok(count)
 }

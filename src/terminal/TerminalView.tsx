@@ -13,6 +13,7 @@ import { errorMessage, useAppData } from "../state/AppData";
 import { useContextMenu } from "../ui/ContextMenu";
 import { useTerminals, type Session } from "./TerminalProvider";
 import { TypeAhead } from "./typeahead";
+import { isMac } from "../lib/platform";
 
 /** ANSI colours for each app theme; background, text and cursor come from the app's tokens. */
 const PALETTES: Record<"dark" | "light", ITheme> = {
@@ -129,7 +130,7 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
   useEffect(() => {
     const { key, hostId } = session;
     const xterm = new Terminal({
-      fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
+      fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", "Ubuntu Mono", monospace',
       fontSize: 13.5,
       lineHeight: 1.15,
       cursorBlink: true,
@@ -401,8 +402,10 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
       lastDir = folderIn(title) ?? lastDir;
       live.current.terminals.update(key, { title: title || null });
     });
-    // Ctrl+C copies when there's a selection (else it interrupts, as usual); Ctrl+V pastes.
+    // Ctrl+C copies when there's a selection (else it interrupts, as usual); Ctrl+V pastes. On a
+    // Mac, ⌘C and ⌘V do that through the Edit menu, and Ctrl keys all go to the shell.
     xterm.attachCustomKeyEventHandler((event) => {
+      if (isMac) return !(event.type === "keydown" && event.ctrlKey && event.key === "Tab");
       if (event.type !== "keydown" || !event.ctrlKey || event.altKey || event.metaKey) return true;
       const k = event.key.toLowerCase();
       if (k === "c" && (event.shiftKey || xterm.hasSelection())) {

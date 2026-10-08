@@ -4,6 +4,14 @@ import { Dialog } from "../ui/Dialog";
 import { PasswordInput } from "../ui/PasswordInput";
 import { errorMessage, useAppData } from "../state/AppData";
 import type { AuthMethod, Host } from "../lib/api";
+import { isMac, isWindows, passwordStore } from "../lib/platform";
+
+/** Where an SSH key usually is, as an example for the key field. */
+const keyExample = isWindows
+  ? "C:\\Users\\you\\.ssh\\id_ed25519"
+  : isMac
+    ? "/Users/you/.ssh/id_ed25519"
+    : "/home/you/.ssh/id_ed25519";
 
 type HostDialogProps = {
   /** The host to edit; left out to add a new one. */
@@ -159,7 +167,7 @@ export function HostDialog({ host, onClose, onSaved }: HostDialogProps) {
                 <input
                   value={keyPath}
                   onChange={(e) => setKeyPath(e.target.value)}
-                  placeholder="C:\Users\you\.ssh\id_ed25519"
+                  placeholder={keyExample}
                   spellCheck={false}
                   required
                 />
@@ -179,7 +187,7 @@ export function HostDialog({ host, onClose, onSaved }: HostDialogProps) {
           </>
         )}
 
-        <p className="hint">Passwords and passphrases are kept in Windows Credential Manager.</p>
+        <p className="hint">Passwords and passphrases are kept in {passwordStore}.</p>
         {error && (
           <p className="form-error" role="alert">
             {error}

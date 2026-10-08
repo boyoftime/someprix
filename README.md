@@ -5,12 +5,22 @@
 <h1 align="center">Someprix</h1>
 
 <p align="center">
-  <b>A free and lightweight SSH tool for Windows.</b><br />
+  <b>A free and lightweight SSH tool for Windows, Mac and Linux.</b><br />
   Deploy your project, move files, edit code and run commands on your server, all in one fast, modern app.
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><b>Download for Windows</b></a>
+  <a href="https://github.com/boyoftime/someprix/releases/latest/download/Someprix_x64-setup.exe"><img src="docs/download/windows.svg" height="64" alt="Download for Windows" /></a>
+  <a href="https://github.com/boyoftime/someprix/releases/latest/download/Someprix_universal.dmg"><img src="docs/download/mac.svg" height="64" alt="Download for Mac" /></a>
+  <a href="https://github.com/boyoftime/someprix/releases/latest/download/Someprix_amd64.deb"><img src="docs/download/linux.svg" height="64" alt="Download for Linux" /></a>
+</p>
+
+<p align="center">
+  <sub>
+    Windows 10 and 11 &nbsp;|&nbsp; macOS 10.15 or later, Apple Silicon and Intel &nbsp;|&nbsp; Ubuntu 22.04 or later and Debian
+    <br />
+    Another Linux? Get the <a href="https://github.com/boyoftime/someprix/releases/latest/download/Someprix_amd64.AppImage">AppImage</a>. Every file is on the <a href="../../releases/latest">releases page</a>.
+  </sub>
 </p>
 
 ![Someprix in light and dark: local changes on the left, the server on the right, one button to push](docs/screenshots/light-dark.png)
@@ -20,7 +30,7 @@
 ## Why Someprix
 
 - **Free.** No account, no subscription, no ads, no tracking. It only talks to your own servers.
-- **Lightweight.** The installer is under 5 MB, and the app starts in a moment.
+- **Lightweight.** The Windows installer is under 5 MB, and the app starts in a moment.
 - **Fast.** Transfers run over several connections at once. Fast mode (⚡) packs many files into one compressed archive and unpacks it on the server, so a slow upload line carries far less.
 - **All in one place.** Sync, file browser, terminal and code editor share the same saved servers. You log in once.
 - **Modern.** A clean interface with dark and light themes, smooth progress bars, live transfer speed and keyboard shortcuts.
@@ -37,7 +47,7 @@
 
 Open your project folder and Someprix watches it. Every file you save, add or delete is marked straight away: amber for changed, green for new, red for deleted. Pick your server and the folder to deploy to once, then press **Push to server** and only those files go up. You can also push a single file or folder from the right-click menu.
 
-Before pushing, Someprix checks whether anyone changed those files on the server since your last push. If they did, nothing is overwritten until you choose, file by file: **Overwrite**, **Skip** for now, **Get server version** (your local copy goes to the Recycle Bin), or **Compare** the two side by side first.
+Before pushing, Someprix checks whether anyone changed those files on the server since your last push. If they did, nothing is overwritten until you choose, file by file: **Overwrite**, **Skip** for now, **Get server version** (your local copy goes to the Recycle Bin, or the Trash on Mac and Linux), or **Compare** the two side by side first.
 
 ### SFTP: drag files both ways
 
@@ -78,22 +88,38 @@ Double-click a text file, on your computer or on the server, and it opens in the
 
 ## Safe with your servers
 
-- Passwords and key passphrases are stored in **Windows Credential Manager**, not in a plain file.
+- Passwords and key passphrases are kept in your system's own password store, never in a plain file: **Windows Credential Manager**, the **Mac Keychain**, or the **Linux keyring** (GNOME Keyring or KWallet).
 - Each server's identity is checked on every connection. You confirm it the first time, and Someprix warns you if it ever changes.
 - Log in with a password or an SSH key.
 
 ## Install
 
-1. Download `Someprix_x.y.z_x64-setup.exe` from the [latest release](../../releases/latest).
-2. Run it.
-
-Needs Windows 10 or 11 (64-bit).
-
-After that, Someprix keeps itself current. When a new version is out, an **Update** button appears at the bottom of the sidebar; you can also check any time with the refresh button next to the version number.
+**Windows 10 or 11.** Download [`Someprix_x64-setup.exe`](https://github.com/boyoftime/someprix/releases/latest/download/Someprix_x64-setup.exe) and run it.
 
 > The installer isn't code-signed yet, so Windows may show **"Windows protected your PC"**. Click **More info → Run anyway**.
 
+**Mac (macOS 10.15 or later, Apple Silicon or Intel).** Download [`Someprix_universal.dmg`](https://github.com/boyoftime/someprix/releases/latest/download/Someprix_universal.dmg), open it and drag Someprix into Applications.
+
+> The app isn't notarized by Apple yet, so the first time you open it macOS says it can't check it. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to Someprix. You only do this once.
+
+**Ubuntu or Debian.** Download [`Someprix_amd64.deb`](https://github.com/boyoftime/someprix/releases/latest/download/Someprix_amd64.deb) and open it with App Center, or run:
+
+```bash
+sudo apt install ./Someprix_amd64.deb
+```
+
+**Any other Linux.** Download [`Someprix_amd64.AppImage`](https://github.com/boyoftime/someprix/releases/latest/download/Someprix_amd64.AppImage), then:
+
+```bash
+chmod +x Someprix_amd64.AppImage
+./Someprix_amd64.AppImage
+```
+
+After that, Someprix keeps itself current. When a new version is out, an **Update** button appears at the bottom of the sidebar; you can also check any time with the refresh button next to the version number.
+
 ## Keyboard shortcuts
+
+On a Mac, use ⌘ where it says Ctrl. In the terminal, ⌘C and ⌘V copy and paste, and Ctrl+C stops the running command as usual.
 
 | Where | Keys | Does |
 |---|---|---|
@@ -109,7 +135,11 @@ After that, Someprix keeps itself current. When a new version is out, an **Updat
 
 ## Build from source
 
-You need [Node.js](https://nodejs.org/) 20+ and [Rust](https://rustup.rs/).
+You need [Node.js](https://nodejs.org/) 20+ and [Rust](https://rustup.rs/). On Linux, also the system libraries Tauri uses:
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libdbus-1-dev libssl-dev build-essential file
+```
 
 ```bash
 npm install
@@ -121,10 +151,11 @@ Built with [Tauri 2](https://tauri.app/), React, TypeScript and Rust, with [russ
 
 ### Releasing an update
 
-Raise the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then run:
+Raise the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, commit, push, then run on Windows:
 
 ```bash
+git push
 npm run release -- --notes "What changed"
 ```
 
-This builds the signed installer and publishes it on GitHub with `latest.json`, the file installed copies check for updates. It needs the [GitHub CLI](https://cli.github.com/) and the update signing key in `keys/someprix.key` (never committed).
+This builds the Windows installer, while GitHub builds the Mac and Linux ones from the same commit (`.github/workflows/build.yml`). It waits for those, signs every update file with the key in `keys/someprix.key` (which never leaves your computer and is never committed), and publishes all of them with `latest.json`, the file installed copies check for updates. It needs the [GitHub CLI](https://cli.github.com/). Add `--windows-only` to release for Windows alone.

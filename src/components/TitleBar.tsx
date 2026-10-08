@@ -3,6 +3,7 @@ import { Copy, Minus, Moon, Square, Sun, X } from "lucide-react";
 import { useContextMenu } from "../ui/ContextMenu";
 import { Logo } from "./Logo";
 import { inTauri } from "../window/windowFx";
+import { isMac } from "../lib/platform";
 import type { ResolvedTheme } from "../theme";
 
 type TitleBarProps = {
@@ -44,7 +45,7 @@ export function TitleBar({
           },
           { label: `${nextTheme === "light" ? "Light" : "Dark"} theme`, icon: theme === "dark" ? Sun : Moon, onSelect: onToggleTheme },
           "separator",
-          { label: "Close", icon: X, shortcut: "Alt+F4", onSelect: onClose, disabled: !inTauri },
+          { label: "Close", icon: X, shortcut: isMac ? "⌘Q" : "Alt+F4", onSelect: onClose, disabled: !inTauri },
         ])
       }
     >
@@ -69,7 +70,8 @@ export function TitleBar({
         )}
       </button>
 
-      {inTauri && (
+      {/* A Mac has its own buttons at the left of the title bar. */}
+      {inTauri && !isMac && (
         <div className="win-controls">
           <button type="button" className="win-btn" onClick={onMinimize} aria-label="Minimize" data-tip="Minimize">
             <Minus size={16} strokeWidth={1.5} />

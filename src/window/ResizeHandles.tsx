@@ -13,7 +13,8 @@ const HANDLES: { direction: ResizeDirection; className: string }[] = [
   { direction: "SouthEast", className: "rz-se" },
 ];
 
-/** Resize grips that fill the transparent gutter around the frame, like Windows' own borders. */
+/** Resize grips: on Windows they fill the transparent gutter around the frame, like Windows' own
+ *  borders; on Linux they run along the window's edges. */
 export function ResizeHandles() {
   return (
     <div className="resize-handles" aria-hidden="true">

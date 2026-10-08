@@ -32,12 +32,24 @@ import { useSpin } from "../ui/useSpin";
 import { useTypeAhead } from "../ui/useTypeAhead";
 import { useOpenInEditor } from "../editor/EditorProvider";
 import { isTextFile } from "../editor/languages";
+import { Crumbs, type Crumb } from "../ui/Crumbs";
+import { fileManager, isWindows, trashName } from "../lib/platform";
 
 const LAST_FOLDER = "someprix.sftp.local";
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-/** Where a Windows path's parent is; a drive root goes up to the drive list (""). */
-export function parentLocal(path: string) {
+/**
+ * Where a folder's parent is, or null at the top. On Windows a drive root goes up to the drive
+ * list (""), which is the top; on Mac and Linux "/" is.
+ */
+export function parentLocal(path: string): string | null {
+  if (!isWindows) {
+    const trimmed = path.replace(/\/+$/, "");
+    if (!trimmed) return null;
+    const cut = trimmed.lastIndexOf("/");
+    return cut <= 0 ? "/" : trimmed.slice(0, cut);
+  }
+  if (!path) return null;
   const trimmed = path.replace(/[\\/]+$/, "");
   if (/^[A-Za-z]:$/.test(trimmed)) return "";
   const cut = trimmed.lastIndexOf("\\");
@@ -47,25 +59,25 @@ export function parentLocal(path: string) {
 }
 
 function LocalCrumbs({ path, onOpen }: { path: string; onOpen: (path: string) => void }) {
-  const parts = path.replace(/[\\/]+$/, "").split("\\").filter(Boolean);
-  return (
-    <nav className="crumbs" aria-label="Folder on this computer">
-      <button type="button" onClick={() => onOpen("")} aria-current={parts.length === 0 ? "location" : undefined}>
-        This PC
-      </button>
-      {parts.map((part, i) => {
-        const target = i === 0 ? `${part}\\` : parts.slice(0, i + 1).join("\\");
-        return (
-          <span key={target} className="crumb">
-            <span className="crumb-sep">\</span>
-            <button type="button" onClick={() => onOpen(target)} aria-current={i === parts.length - 1 ? "location" : undefined}>
-              {part}
-            </button>
-          </span>
-        );
-      })}
-    </nav>
-  );
+  let items: Crumb[];
+  if (isWindows) {
+    const parts = path.replace(/[\\/]+$/, "").split("\\").filter(Boolean);
+    items = [
+      { label: "This PC", path: "" },
+      ...parts.map((part, i) => ({
+        label: part,
+        path: i === 0 ? `${part}\\` : parts.slice(0, i + 1).join("\\"),
+        sep: "\\",
+      })),
+    ];
+  } else {
+    const parts = path.split("/").filter(Boolean);
+    items = [
+      { label: "/", path: "/" },
+      ...parts.map((part, i) => ({ label: part, path: `/${parts.slice(0, i + 1).join("/")}`, sep: i > 0 ? "/" : undefined })),
+    ];
+  }
+  return <Crumbs items={items} fullPath={path || "This PC"} label="Folder on this computer" onOpen={onOpen} />;
 }
 
 /** What a download just wrote, to reload the list and point it out. */
@@ -124,6 +136,9 @@ export function LocalBrowser({
   const [toDelete, setToDelete] = useState<LocalFsEntry[] | null>(null);
   // What the Properties dialog shows, while it's open.
   const [propsFor, setPropsFor] = useState<LocalFsEntry[] | null>(null);
+  // Windows' list of drives (""), above every drive root.
+  const atDrives = isWindows && path === "";
+  const up = path === null ? null : parentLocal(path);
 
   // Start where the user left off, else in their home folder.
   useEffect(() => {
@@ -226,7 +241,7 @@ export function LocalBrowser({
       entry.isDir
         ? { label: "Open", icon: FolderOpen, onSelect: () => open(entry.path) }
         : { label: path && isTextFile(entry.name) ? "Open externally" : "Open", icon: ExternalLink, onSelect: () => attempt(openPath(entry.path)) },
-      { label: "Show in Explorer", icon: FolderSearch, onSelect: () => attempt(revealItemInDir(entry.path)) },
+      { label: `Show in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(revealItemInDir(entry.path)) },
       "separator",
       {
         label: uploadLabel(targets.length),
@@ -237,7 +252,7 @@ export function LocalBrowser({
       "separator",
       { label: "Copy path", icon: Copy, onSelect: () => attempt(writeText(entry.path)) },
       // Drives themselves can't be deleted.
-      ...(path
+      ...(!atDrives
         ? ([
             "separator",
             {
@@ -263,23 +278,23 @@ export function LocalBrowser({
       },
       "separator",
       { label: "Refresh", icon: RefreshCw, onSelect: refresh },
-      { label: "Parent folder", icon: ArrowUp, onSelect: () => path && open(parentLocal(path)), disabled: !path },
+      { label: "Parent folder", icon: ArrowUp, onSelect: () => up !== null && open(up), disabled: up === null },
       { label: "Home", icon: House, onSelect: () => void api.localHome().then(open) },
-      ...(path ? [{ label: "Open in Explorer", icon: FolderSearch, onSelect: () => attempt(openPath(path)) }] : []),
+      ...(path && !atDrives ? [{ label: `Open in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(openPath(path)) }] : []),
       "separator",
-      { label: "Copy path", icon: Copy, onSelect: () => path && attempt(writeText(path)), disabled: !path },
+      { label: "Copy path", icon: Copy, onSelect: () => path && attempt(writeText(path)), disabled: !path || atDrives },
     ]);
 
   const onListKey = (event: KeyboardEvent) => {
-    if (event.key === "Enter" && event.altKey && path && chosen.length) {
+    if (event.key === "Enter" && event.altKey && !atDrives && chosen.length) {
       event.preventDefault();
       setPropsFor(chosen);
-    } else if (event.key === "Delete" && path && chosen.length) {
+    } else if (event.key === "Delete" && !atDrives && chosen.length) {
       event.preventDefault();
       setToDelete(chosen);
-    } else if (event.key === "Backspace" && path) {
+    } else if (event.key === "Backspace" && up !== null) {
       event.preventDefault();
-      open(parentLocal(path));
+      open(up);
     } else if (event.key === "a" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       all();
@@ -305,8 +320,8 @@ export function LocalBrowser({
           <button
             type="button"
             className="icon-btn"
-            onClick={() => path && open(parentLocal(path))}
-            disabled={!path}
+            onClick={() => up !== null && open(up)}
+            disabled={up === null}
             aria-label="Parent folder"
             data-tip="Parent folder"
           >
@@ -375,7 +390,7 @@ export function LocalBrowser({
                   onKeyDown={(event) => event.key === "Enter" && activate(entry)}
                   onContextMenu={(event) => openMenu(event, rowMenu(entry))}
                 >
-                  {path === "" ? (
+                  {atDrives ? (
                     <HardDrive size={16} strokeWidth={1.75} className="tree-icon" />
                   ) : entry.isDir ? (
                     <Folder size={16} strokeWidth={1.75} className="tree-icon folder" />
@@ -430,7 +445,7 @@ export function LocalBrowser({
           onFailed={() => setReload((n) => n + 1)}
           onDeleted={() => {
             const single = toDelete.length === 1 ? toDelete[0] : null;
-            notify(`Moved to Recycle Bin: ${single ? single.name : `${toDelete.length} items`}`);
+            notify(`Moved to ${trashName}: ${single ? single.name : `${toDelete.length} items`}`);
             setToDelete(null);
             clear();
             setReload((n) => n + 1);
