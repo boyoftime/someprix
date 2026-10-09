@@ -74,7 +74,85 @@ const FILES = {
   appImage: "Someprix_amd64.AppImage",
 };
 
-// ---------- Mac and Linux: find (or start) GitHub's build of this exact commit ----------
+// ---------- GitHub's Mac and Linux builds ----------
+const TRIES = 4;
+const notes = option("--notes") ?? `Someprix ${version}`;
+
+/** GitHub's builds of a commit that are running or succeeded, newest first. */
+const runsFor = (sha) => {
+  const list = gh("run", "list", "--workflow", WORKFLOW, "--commit", sha, "--limit", "10", "--json", "databaseId,status,conclusion,createdAt");
+  if (list.status !== 0) return [];
+  return JSON.parse(list.stdout || "[]").filter((r) => r.status !== "completed" || r.conclusion === "success");
+};
+
+/** Waits for a GitHub build to finish; stops the release if it failed. */
+const waitForBuild = (ciRun) => {
+  if (ciRun.status === "completed") return;
+  console.log("\nWaiting for the Mac and Linux build on GitHub...");
+  const watched = spawnSync("gh", ["run", "watch", String(ciRun.databaseId), "--repo", REPO, "--exit-status", "--interval", "20"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  if (watched.status !== 0) {
+    fail(`the Mac and Linux build failed: https://github.com/${REPO}/actions/runs/${ciRun.databaseId}
+  Windows is built. To publish it alone: npm run release -- --publish-only --windows-only --notes "${notes}"`);
+  }
+};
+
+/** Downloads a finished GitHub build (trying again after a network hiccup), signs its update
+ *  files here, and puts everything with the Windows files. */
+const fetchBuild = (runId) => {
+  let got = null;
+  for (let attempt = 1; attempt <= TRIES; attempt++) {
+    if (attempt > 1) {
+      console.log(`Download broke off; trying again in ${5 * (attempt - 1)} s (${attempt}/${TRIES})...`);
+      pause(5000 * (attempt - 1));
+    }
+    console.log("\nDownloading the Mac and Linux build from GitHub...");
+    rmSync(ciDir, { recursive: true, force: true });
+    got = gh("run", "download", String(runId), "--dir", ciDir);
+    if (got.status === 0) break;
+  }
+  if (got.status !== 0) {
+    fail(`couldn't download the Mac and Linux build:\n${got.stderr}
+  Everything is built. When the connection is back, run
+  npm run release -- --publish-only --notes "${notes}"`);
+  }
+  const tauri = join(root, "node_modules", "@tauri-apps", "cli", "tauri.js");
+  // The key goes in as an argument; leftovers in the environment would override it.
+  const signEnv = { ...process.env };
+  delete signEnv.TAURI_SIGNING_PRIVATE_KEY;
+  delete signEnv.TAURI_SIGNING_PRIVATE_KEY_PATH;
+  delete signEnv.TAURI_SIGNING_PRIVATE_KEY_PASSWORD;
+  for (const [folder, name] of [
+    ["macos", FILES.macUpdate],
+    ["linux", FILES.appImage],
+    ["linux", FILES.deb],
+  ]) {
+    const file = join(ciDir, folder, name);
+    if (!existsSync(file)) fail(`the GitHub build has no ${name}`);
+    // Signed for this version only, like `tauri build` does for Windows.
+    const keyArgs = existsSync(key) ? ["--private-key-path", key] : ["--private-key", key];
+    const signed = spawnSync(process.execPath, [tauri, "signer", "sign", ...keyArgs, "--password", password, "--app-version", version, file], {
+      cwd: root,
+      encoding: "utf8",
+      env: signEnv,
+    });
+    if (signed.status !== 0 || !existsSync(`${file}.sig`)) fail(`signing ${name} failed:\n${signed.stderr || signed.stdout}`);
+  }
+  mkdirSync(out, { recursive: true });
+  for (const [folder, name] of [
+    ["macos", FILES.dmg],
+    ["macos", FILES.macUpdate],
+    ["linux", FILES.deb],
+    ["linux", FILES.appImage],
+  ]) {
+    copyFileSync(join(ciDir, folder, name), join(out, name));
+    if (existsSync(join(ciDir, folder, `${name}.sig`))) copyFileSync(join(ciDir, folder, `${name}.sig`), join(out, `${name}.sig`));
+  }
+};
+
+// Find (or start) GitHub's build of this exact commit.
 let ciRun = null;
 if (withCi && buildFirst) {
   const dirty = run("git", ["status", "--porcelain", "--untracked-files=no"]).stdout.trim();
@@ -84,16 +162,11 @@ if (withCi && buildFirst) {
   const remote = run("git", ["rev-parse", "origin/main"]).stdout.trim();
   if (head !== remote) fail("this commit isn't on GitHub yet. Run `git push` first, then run this again.");
 
-  const runsFor = () => {
-    const list = gh("run", "list", "--workflow", WORKFLOW, "--commit", head, "--limit", "10", "--json", "databaseId,status,conclusion,createdAt");
-    if (list.status !== 0) return [];
-    return JSON.parse(list.stdout || "[]").filter((r) => r.status !== "completed" || r.conclusion === "success");
-  };
   // A push starts the build by itself; give a fresh one a moment to show up before starting another.
-  ciRun = runsFor()[0] ?? null;
+  ciRun = runsFor(head)[0] ?? null;
   for (let i = 0; i < 5 && !ciRun; i++) {
     pause(4000);
-    ciRun = runsFor()[0] ?? null;
+    ciRun = runsFor(head)[0] ?? null;
   }
   if (!ciRun) {
     console.log("Starting the Mac and Linux build on GitHub...");
@@ -105,7 +178,7 @@ if (withCi && buildFirst) {
     if (started.status !== 0) fail(`couldn't start the Mac and Linux build:\n${started.stderr}`);
     for (let i = 0; i < 30 && !ciRun; i++) {
       pause(3000);
-      ciRun = runsFor()[0] ?? null;
+      ciRun = runsFor(head)[0] ?? null;
     }
     if (!ciRun) fail("the Mac and Linux build didn't start on GitHub");
   }
@@ -136,49 +209,19 @@ if (buildFirst) {
 
 // ---------- Mac and Linux: wait, download, sign the update files here ----------
 if (withCi && buildFirst) {
-  console.log("\nWaiting for the Mac and Linux build on GitHub...");
-  const watched = spawnSync("gh", ["run", "watch", String(ciRun.databaseId), "--repo", REPO, "--exit-status", "--interval", "20"], {
-    cwd: root,
-    stdio: "inherit",
-  });
-  if (watched.status !== 0) {
-    fail(`the Mac and Linux build failed: https://github.com/${REPO}/actions/runs/${ciRun.databaseId}
-  Windows is built. To publish it alone: npm run release -- --publish-only --windows-only --notes "..."`);
-  }
-  rmSync(ciDir, { recursive: true, force: true });
-  const got = gh("run", "download", String(ciRun.databaseId), "--dir", ciDir);
-  if (got.status !== 0) fail(`couldn't download the Mac and Linux build:\n${got.stderr}`);
-  const tauri = join(root, "node_modules", "@tauri-apps", "cli", "tauri.js");
-  // The key goes in as an argument; leftovers in the environment would override it.
-  const signEnv = { ...process.env };
-  delete signEnv.TAURI_SIGNING_PRIVATE_KEY;
-  delete signEnv.TAURI_SIGNING_PRIVATE_KEY_PATH;
-  delete signEnv.TAURI_SIGNING_PRIVATE_KEY_PASSWORD;
-  for (const [folder, name] of [
-    ["macos", FILES.macUpdate],
-    ["linux", FILES.appImage],
-    ["linux", FILES.deb],
-  ]) {
-    const file = join(ciDir, folder, name);
-    if (!existsSync(file)) fail(`the GitHub build has no ${name}`);
-    // Signed for this version only, like `tauri build` does for Windows.
-    const keyArgs = existsSync(key) ? ["--private-key-path", key] : ["--private-key", key];
-    const signed = spawnSync(process.execPath, [tauri, "signer", "sign", ...keyArgs, "--password", password, "--app-version", version, file], {
-      cwd: root,
-      encoding: "utf8",
-      env: signEnv,
-    });
-    if (signed.status !== 0 || !existsSync(`${file}.sig`)) fail(`signing ${name} failed:\n${signed.stderr || signed.stdout}`);
-  }
-  for (const [folder, name] of [
-    ["macos", FILES.dmg],
-    ["macos", FILES.macUpdate],
-    ["linux", FILES.deb],
-    ["linux", FILES.appImage],
-  ]) {
-    copyFileSync(join(ciDir, folder, name), join(out, name));
-    if (existsSync(join(ciDir, folder, `${name}.sig`))) copyFileSync(join(ciDir, folder, `${name}.sig`), join(out, `${name}.sig`));
-  }
+  waitForBuild(ciRun);
+  fetchBuild(ciRun.databaseId);
+}
+// Publishing what's built, but GitHub's part isn't here yet (its download broke off, say):
+// fetch the build of the commit that's on GitHub.
+const macLinux = [FILES.dmg, FILES.macUpdate, `${FILES.macUpdate}.sig`, FILES.deb, `${FILES.deb}.sig`, FILES.appImage, `${FILES.appImage}.sig`];
+if (withCi && !buildFirst && macLinux.some((name) => !existsSync(join(out, name)))) {
+  run("git", ["fetch", "origin", "main", "--quiet"]);
+  const pushed = run("git", ["rev-parse", "origin/main"]).stdout.trim();
+  const found = runsFor(pushed)[0];
+  if (!found) fail("GitHub has no Mac and Linux build of the commit on GitHub. Run the release without --publish-only.");
+  waitForBuild(found);
+  fetchBuild(found.databaseId);
 }
 
 // ---------- What installed copies read to find, download and check the new version ----------
@@ -203,7 +246,6 @@ if (withCi) {
   platforms["linux-x86_64-appimage"] = entry(FILES.appImage);
   platforms["linux-x86_64"] = entry(FILES.appImage);
 }
-const notes = option("--notes") ?? `Someprix ${version}`;
 const latest = join(out, "latest.json");
 writeFileSync(latest, JSON.stringify({ version, notes, pub_date: new Date().toISOString(), platforms }, null, 2));
 
@@ -232,7 +274,6 @@ Already installed? Someprix offers this update by itself.`;
 
 // A network hiccup shouldn't sink a release: try a few times. A failed try leaves either no
 // release (gh removes it) or one whose files can simply be uploaded again.
-const TRIES = 4;
 let published = false;
 for (let attempt = 1; attempt <= TRIES && !published; attempt++) {
   if (attempt > 1) {
