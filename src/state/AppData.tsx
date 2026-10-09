@@ -19,7 +19,9 @@ export type TrustRequest = {
   answer: (trusted: boolean) => void;
 };
 
-export type Toast = { id: number; text: string; tone: "info" | "error" };
+/** A button on a toast, e.g. Undo right after a push. */
+export type ToastAction = { label: string; run: () => void };
+export type Toast = { id: number; text: string; tone: "info" | "error"; action?: ToastAction };
 
 /** The latest push: when it finished and which server paths it wrote. */
 export type PushRecord = { at: number; paths: string[] };
@@ -59,7 +61,10 @@ type AppData = {
   recordPush: (paths: string[]) => void;
 
   toasts: Toast[];
-  notify: (text: string, tone?: Toast["tone"]) => void;
+  notify: (text: string, tone?: Toast["tone"], action?: ToastAction) => void;
+  /** Reads the open project again (after its settings change). */
+  refreshProject: () => Promise<void>;
+  dismiss: (id: number) => void;
 };
 
 const AppDataContext = createContext<AppData | null>(null);
@@ -103,11 +108,23 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   hostsRef.current = hosts;
   const toastId = useRef(0);
 
-  const notify = useCallback((text: string, tone: Toast["tone"] = "info") => {
-    const id = ++toastId.current;
-    setToasts((list) => [...list, { id, text, tone }]);
-    setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), tone === "error" ? 7000 : 4000);
+  const refreshProject = useCallback(async () => {
+    try {
+      setProject(await api.currentProject());
+    } catch {
+      // Stays as it was.
+    }
   }, []);
+  const dismiss = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), []);
+  const notify = useCallback(
+    (text: string, tone: Toast["tone"] = "info", action?: ToastAction) => {
+      const id = ++toastId.current;
+      setToasts((list) => [...list, { id, text, tone, action }]);
+      // One with a button stays long enough to reach for it.
+      setTimeout(() => dismiss(id), action ? 10000 : tone === "error" ? 7000 : 4000);
+    },
+    [dismiss],
+  );
 
   useEffect(() => {
     void api.hosts().then(setHosts).catch((e) => notify(message(e), "error"));
@@ -343,7 +360,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       lastPush,
       recordPush,
       toasts,
+      dismiss,
       notify,
+      refreshProject,
     }),
     [
       hosts,
@@ -367,7 +386,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       lastPush,
       recordPush,
       toasts,
+      dismiss,
       notify,
+      refreshProject,
     ],
   );
 

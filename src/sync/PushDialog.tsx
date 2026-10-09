@@ -17,6 +17,8 @@ type PushDialogProps = {
   /** Send the files as one compressed archive that the server unpacks. */
   fast?: boolean;
   onClose: () => void;
+  /** Opens the push history to undo this push (from the toast once it's done). */
+  onUndo: (historyId: string) => void;
 };
 
 /** ready → checking the server → (conflicts to decide → taking server versions) → pushing → done */
@@ -42,7 +44,7 @@ function why(conflict: Conflict) {
   return conflict.kind === "deleted" ? `${changed}, deleted here` : changed;
 }
 
-export function PushDialog({ host, remoteDir, changes, only, fast = false, onClose }: PushDialogProps) {
+export function PushDialog({ host, remoteDir, changes, only, fast = false, onClose, onUndo }: PushDialogProps) {
   const { notify, recordPush, project } = useAppData();
   // The list as it was when the dialog opened; pushing updates the live one underneath.
   const [listed] = useState(changes);
@@ -55,6 +57,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const [comparing, setComparing] = useState<Conflict | null>(null);
   /** Conflicting files left out of this push (skipped, or replaced by the server's version). */
   const [held, setHeld] = useState<string[]>([]);
+  const [cancelling, setCancelling] = useState(false);
 
   const onProgress = (next: PushProgress) => {
     if (next.bytesDone !== undefined) transfer.record(next.bytesDone);
@@ -118,16 +121,27 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   async function push(skip: string[]) {
     setPhase("pushing");
     setProgress(null);
+    setCancelling(false);
     transfer.reset();
     const unlisten = await api.onPushProgress(onProgress);
     try {
       const report = await api.push(includeDeletions, only, fast, skip);
+      if (report.cancelled) {
+        notify("Push cancelled. Nothing changed on the server.");
+        recordPush([]);
+        onClose();
+        return;
+      }
       setPhase("done");
       // Let the full bar register before the dialog goes away.
       await new Promise((r) => setTimeout(r, DONE_PAUSE));
       const parts = [`Pushed ${plural(report.uploaded, "file")}`];
       if (report.deleted) parts.push(`deleted ${report.deleted}`);
-      notify(`${parts.join(", ")} to ${remoteDir}`);
+      const history = report.history;
+      notify(`${parts.join(", ")} to ${remoteDir}`, "info", history ? { label: "Undo", run: () => onUndo(history) } : undefined);
+      if (report.notBackedUp) {
+        notify(`${plural(report.notBackedUp, "file")} replaced without a backup (too big, or the server couldn't keep a copy)`);
+      }
       if (fast && !report.fast && report.uploaded > 0) {
         notify("Fast mode unavailable: no tar on server");
       }
@@ -158,6 +172,9 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const stage = progress?.stage ?? null;
   const currentIsDeletion = deletions.some((c) => c.path === currentPath);
   const pushing = phase === "pushing" || done;
+
+  // Until files start going into place, Cancel takes the push back.
+  const cancellable = phase === "pushing" && stage !== "placing" && !cancelling;
 
   // Deleting, packing and unpacking send no data, so there's no speed to show then.
   const speed = currentIsDeletion || stage ? null : transfer.speed;
@@ -216,9 +233,23 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
         footer={
           <>
             <span className="spacer" />
-            <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
-              Cancel
-            </button>
+            {phase === "pushing" ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setCancelling(true);
+                  void api.cancelPush();
+                }}
+                disabled={!cancellable}
+              >
+                {cancelling ? "Cancelling…" : "Cancel"}
+              </button>
+            ) : (
+              <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
+                Cancel
+              </button>
+            )}
             <button type="button" className="btn btn-primary" onClick={action.run} disabled={action.disabled}>
               {action.label}
             </button>
@@ -372,6 +403,12 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
                     ? `Packing ${currentPath ?? "…"}`
                     : stage === "unpacking"
                       ? "Unpacking…"
+                      : stage === "placing"
+                        ? project?.backup
+                          ? "Keeping the old copies, putting files in place…"
+                          : "Putting files in place…"
+                        : cancelling
+                          ? "Cancelling, removing what was sent…"
                       : currentPath
                         ? `${currentIsDeletion ? "Deleting" : "Uploading"} ${currentPath}`
                         : "Connecting…"}

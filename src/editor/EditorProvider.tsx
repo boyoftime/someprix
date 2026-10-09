@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { countColumn, EditorState, type Extension, type StateEffect, type Text, type TransactionSpec } from "@codemirror/state";
+import { countColumn, EditorState, Text, type Extension, type StateEffect, type TransactionSpec } from "@codemirror/state";
 import {
   crosshairCursor,
   drawSelection,
@@ -24,6 +24,7 @@ import { api, type TextFile } from "../lib/api";
 import { errorMessage, useAppData } from "../state/AppData";
 import { closeGuards } from "../window/windowFx";
 import { detectIndent, languageFor } from "./languages";
+import { DRAFTS, isOn } from "../settings/SettingsPage";
 import { codeColours, editorChrome } from "./theme";
 
 /** Where an open file lives. */
@@ -110,6 +111,22 @@ const sameText = (a: Text, b: Text) => a.length === b.length && a.eq(b);
 const read = (source: Source): Promise<TextFile> =>
   source.kind === "local" ? api.readLocalText(source.path) : api.readRemoteText(source.hostId, source.path);
 
+/** Unsaved text kept on disk, so it comes back after a crash or a power cut. */
+type Draft = {
+  key: string;
+  source: Source;
+  text: string;
+  eol: "LF" | "CRLF";
+  bom: boolean;
+  indent: string;
+  /** The file version the text started from: saving still notices changes made since. */
+  version: string;
+  savedAt: number;
+};
+
+/** How long typing has to pause before the draft is written. */
+const DRAFT_PAUSE = 800;
+
 function cursorOf(state: EditorState): Cursor {
   const main = state.selection.main;
   const line = state.doc.lineAt(main.head);
@@ -158,12 +175,47 @@ export function EditorProvider({ onShow, children }: { onShow: () => void; child
   const find = (id: string) => tabsRef.current.find((tab) => tab.id === id);
   const stateOf = (id: string) => (id === mounted.current && view.current ? view.current.state : docs.current.get(id)?.state);
 
+  // Drafts: written a moment after typing stops, dropped once the file is saved or closed.
+  const draftTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const dropDraft = (id: string) => {
+    clearTimeout(draftTimers.current.get(id));
+    draftTimers.current.delete(id);
+    void api.dropDraft(id).catch(() => {});
+  };
+  const keepDraft = (id: string) => {
+    if (!isOn(DRAFTS)) return;
+    clearTimeout(draftTimers.current.get(id));
+    draftTimers.current.set(
+      id,
+      setTimeout(() => {
+        draftTimers.current.delete(id);
+        const tab = find(id);
+        const doc = docs.current.get(id);
+        const state = stateOf(id);
+        if (!tab || !doc || !state || !tab.dirty) return;
+        const draft: Draft = {
+          key: id,
+          source: tab.source,
+          text: state.doc.toString(),
+          eol: tab.eol,
+          bom: tab.bom,
+          indent: tab.indent,
+          version: doc.version,
+          savedAt: Date.now(),
+        };
+        void api.putDraft(id, JSON.stringify(draft)).catch(() => {});
+      }, DRAFT_PAUSE),
+    );
+  };
+
   const onUpdate = (id: string, update: ViewUpdate) => {
     if (update.docChanged) {
       const doc = docs.current.get(id);
       const tab = find(id);
       const dirty = doc ? !sameText(update.state.doc, doc.saved) : false;
       if (tab && tab.dirty !== dirty) patch(id, { dirty });
+      if (dirty) keepDraft(id);
+      else dropDraft(id);
     }
     if ((update.docChanged || update.selectionSet) && id === mounted.current) cursorSink.current?.(cursorOf(update.state));
   };
@@ -257,6 +309,7 @@ export function EditorProvider({ onShow, children }: { onShow: () => void; child
     const next = list[at + 1] ?? list[at - 1] ?? null;
     if (mounted.current === id) mounted.current = null;
     docs.current.delete(id);
+    dropDraft(id);
     commit(list.filter((tab) => tab.id !== id));
     if (active.current !== id) return;
     active.current = null;
@@ -362,7 +415,10 @@ export function EditorProvider({ onShow, children }: { onShow: () => void; child
       doc.saved = snapshot;
       doc.version = outcome.version;
       const now = stateOf(id);
-      patch(id, { dirty: now ? !sameText(now.doc, snapshot) : false });
+      const still = now ? !sameText(now.doc, snapshot) : false;
+      patch(id, { dirty: still });
+      if (still) keepDraft(id);
+      else dropDraft(id);
       setJustSaved(id);
       // Server listings showing this file reload and point it out.
       if (source.kind === "remote") recordPush([source.path]);
@@ -402,6 +458,7 @@ export function EditorProvider({ onShow, children }: { onShow: () => void; child
       }
       doc.version = file.version;
       patch(id, { dirty: false, readonly: file.readonly, bom: file.bom, eol: file.text.includes("\r\n") ? "CRLF" : "LF" });
+      dropDraft(id);
     } catch (e) {
       notify(errorMessage(e), "error");
     }
@@ -414,8 +471,72 @@ export function EditorProvider({ onShow, children }: { onShow: () => void; child
         activate(tab.id);
         if (!(await save(tab.id))) return;
       }
+    } else {
+      // Closing without saving: those changes were let go on purpose.
+      await Promise.all(tabsRef.current.map((tab) => api.dropDraft(tab.id).catch(() => {})));
     }
     await getCurrentWindow().destroy();
+  };
+
+  /** Reopens the files that had unsaved changes when the app last stopped (a crash, a power cut). */
+  const recovering = useRef(false);
+  const recover = async () => {
+    // Once per launch (development runs effects twice).
+    if (recovering.current || !isOn(DRAFTS)) return;
+    recovering.current = true;
+    const drafts: Draft[] = [];
+    for (const body of await api.drafts().catch(() => [] as string[])) {
+      try {
+        drafts.push(JSON.parse(body) as Draft);
+      } catch {
+        // Unreadable: skipped.
+      }
+    }
+    let recovered = 0;
+    for (const draft of drafts.sort((a, b) => a.savedAt - b.savedAt)) {
+      const id = draft.key;
+      if (find(id)) continue;
+      // A file here that already has this text: nothing was lost.
+      let saved: Text = Text.empty;
+      if (draft.source.kind === "local") {
+        const now = await api.readLocalText(draft.source.path).catch(() => null);
+        if (now && now.text.replace(/\r\n/g, "\n") === draft.text) {
+          void api.dropDraft(id).catch(() => {});
+          continue;
+        }
+        if (now) saved = Text.of(now.text.replace(/\r\n/g, "\n").split("\n"));
+      }
+      const language = languageFor(draft.source.path);
+      const colours = (await language.load?.().catch(() => null)) ?? null;
+      // Opened meanwhile (by hand): that tab wins.
+      if (find(id)) continue;
+      const state = makeState(id, draft.text, colours, draft.indent, false);
+      docs.current.set(id, { state, saved, version: draft.version });
+      commit([
+        ...tabsRef.current,
+        {
+          id,
+          source: draft.source,
+          name: baseName(draft.source.path),
+          loading: false,
+          dirty: true,
+          saving: false,
+          readonly: false,
+          language: language.label,
+          indent: draft.indent,
+          eol: draft.eol,
+          bom: draft.bom,
+        },
+      ]);
+      if (!active.current) activate(id);
+      recovered++;
+    }
+    if (recovered) {
+      notify(`Recovered ${recovered === 1 ? "1 unsaved file" : `${recovered} unsaved files`} in the Editor`, "info", {
+        label: "Show",
+        run: () => live.current.onShow(),
+      });
+    }
   };
 
   const attach = (next: EditorView | null) => {
@@ -424,7 +545,7 @@ export function EditorProvider({ onShow, children }: { onShow: () => void; child
     if (next) mount();
   };
 
-  const impl = { open, activate, close, save, reload, quit, attach, focus };
+  const impl = { open, activate, close, save, reload, quit, attach, focus, recover };
   const latest = useRef(impl);
   latest.current = impl;
   // Stable wrappers around the latest versions, so consumers never re-render for them.
@@ -445,6 +566,11 @@ export function EditorProvider({ onShow, children }: { onShow: () => void; child
     }),
     [],
   );
+
+  // Unsaved work from last time comes back.
+  useEffect(() => {
+    void latest.current.recover();
+  }, []);
 
   // Closing the window with unsaved files asks first.
   useEffect(() => {

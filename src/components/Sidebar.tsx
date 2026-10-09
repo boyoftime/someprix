@@ -7,6 +7,7 @@ import {
   FolderUp,
   RefreshCw,
   Server,
+  Settings,
   SquareTerminal,
 } from "lucide-react";
 import { version } from "../../package.json";
@@ -14,7 +15,7 @@ import { useEditor } from "../editor/EditorProvider";
 import { useUpdates } from "../update/UpdateProvider";
 import { useSpin } from "../ui/useSpin";
 
-export type Page = "sync" | "sftp" | "hosts" | "terminal" | "editor";
+export type Page = "sync" | "sftp" | "hosts" | "terminal" | "editor" | "settings";
 
 const ITEMS: { page: Page; label: string; Icon: typeof Server }[] = [
   { page: "sync", label: "Sync", Icon: ArrowLeftRight },
@@ -62,6 +63,18 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
           )}
         </button>
       ))}
+
+      <button
+        type="button"
+        className="nav-item nav-settings"
+        aria-current={page === "settings" ? "page" : undefined}
+        aria-label={collapsed ? "Settings" : undefined}
+        onClick={() => onNavigate("settings")}
+        data-tip={collapsed ? "Settings" : undefined}
+      >
+        <Settings size={18} strokeWidth={1.75} />
+        <span className="nav-label">Settings</span>
+      </button>
 
       {updates.available && (
         <button

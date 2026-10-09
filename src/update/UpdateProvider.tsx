@@ -7,6 +7,7 @@ import { formatSize } from "../lib/format";
 import { Dialog } from "../ui/Dialog";
 import { Loading } from "../ui/Loading";
 import { inTauri } from "../window/windowFx";
+import { AUTO_UPDATES, isOn } from "../settings/SettingsPage";
 
 /** First look for a new version this long after launch, then this often while the app is open. */
 const FIRST_CHECK = 4000;
@@ -90,8 +91,10 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!inTauri) return;
-    const first = setTimeout(() => void runRef.current(false), FIRST_CHECK);
-    const every = setInterval(() => void runRef.current(false), CHECK_EVERY);
+    // Unless switched off in Settings (the button still checks).
+    const auto = () => isOn(AUTO_UPDATES) && void runRef.current(false);
+    const first = setTimeout(auto, FIRST_CHECK);
+    const every = setInterval(auto, CHECK_EVERY);
     return () => {
       clearTimeout(first);
       clearInterval(every);

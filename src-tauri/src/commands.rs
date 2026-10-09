@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashSet,
-    sync::Arc,
+    sync::{Arc, Mutex},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
@@ -11,13 +11,14 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
+    backup,
     conflicts::{self, Conflict},
     edit, fast,
     turbo::{self, Meter},
     files::{self, PART_SUFFIX},
     project::{self, Change, ChangeKind, LocalEntry, ServerSig, SharedProject, Sig, CHANGES_EVENT},
     ssh::{self, ConnectOutcome, RemoteEntry, Ssh},
-    store::{self, AuthMethod, Host, ProjectLink, Store},
+    store::{self, AuthMethod, BackupMode, Host, ProjectLink, Settings, Store},
     terminal::Terminals,
 };
 
@@ -28,6 +29,8 @@ pub struct AppState {
     ssh: Ssh,
     project: SharedProject,
     pushing: AtomicBool,
+    /// Set by the push dialog's Cancel; the push stops and removes what it sent.
+    push_cancel: AtomicBool,
     uploading: AtomicBool,
     /// Set by the Cancel button; the running upload stops and undoes itself.
     upload_cancel: AtomicBool,
@@ -44,6 +47,7 @@ impl AppState {
             ssh: Ssh::default(),
             project: SharedProject::default(),
             pushing: AtomicBool::new(false),
+            push_cancel: AtomicBool::new(false),
             uploading: AtomicBool::new(false),
             upload_cancel: AtomicBool::new(false),
             props_generation: Arc::new(AtomicU64::new(0)),
@@ -275,6 +279,10 @@ pub struct ProjectInfo {
     changes: Vec<Change>,
     /// Paths excluded from pushing.
     excluded: Vec<String>,
+    /// Pushes keep a backup of what they replace or delete on the server, and this project's
+    /// own choice about that (none: it follows the setting for all projects).
+    backup: bool,
+    backup_choice: Option<bool>,
 }
 
 /// Project folders are keyed by their path without a trailing separator (but a drive or the
@@ -294,8 +302,10 @@ fn project_info(state: &AppState) -> Option<ProjectInfo> {
     let guard = state.project.lock().unwrap();
     let project = guard.as_ref()?;
     let root = project.root.to_string_lossy().into_owned();
-    let ProjectLink { host_id, remote_dir, .. } = state.store.project_link(&root);
+    let ProjectLink { host_id, remote_dir, backup: backup_choice, .. } = state.store.project_link(&root);
     Some(ProjectInfo {
+        backup: state.store.settings().backs_up(backup_choice),
+        backup_choice,
         name: project
             .root
             .file_name()
@@ -354,8 +364,10 @@ pub fn project_set_target(
     remote_dir: Option<String>,
 ) -> Result<(), String> {
     let root = project_info(&state).ok_or("No project open")?.root;
-    let excluded = state.store.project_link(&root).excluded;
-    state.store.set_project_link(&root, ProjectLink { host_id, remote_dir, excluded })
+    let mut link = state.store.project_link(&root);
+    link.host_id = host_id;
+    link.remote_dir = remote_dir;
+    state.store.set_project_link(&root, link)
 }
 
 /// Excludes project paths (files or folders) from pushing, or, with `exclude` false, includes
@@ -414,11 +426,11 @@ struct PushProgress {
     bytes_total: u64,
     /// Everything has arrived and is being moved into place; it can no longer be cancelled.
     finishing: bool,
-    /// Fast mode's extra steps: "packing" the files here, "unpacking" them on the server.
+    /// Extra steps: "packing" the files here (fast mode), "placing" them on the server (keeping
+    /// the old copies, then moving each file into place).
     #[serde(skip_serializing_if = "Option::is_none")]
     stage: Option<&'static str>,
 }
-
 
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -427,6 +439,14 @@ pub struct PushReport {
     deleted: usize,
     /// The files went as one compressed archive (fast mode).
     fast: bool,
+    /// Stopped by Cancel before anything changed on the server.
+    cancelled: bool,
+    /// Old copies kept in the backup, and ones replaced or deleted without (too big to keep, or
+    /// the server couldn't); both zero when this project keeps no backups.
+    backed_up: usize,
+    not_backed_up: usize,
+    /// The history entry for this push, when it changed anything: Undo takes it.
+    history: Option<String>,
 }
 
 /// Pushes the project's changes, or with `only`, just the changes at or under those paths.
@@ -443,6 +463,7 @@ pub async fn project_push(
     if state.pushing.swap(true, Ordering::SeqCst) {
         return Err("Push in progress".into());
     }
+    state.push_cancel.store(false, Ordering::SeqCst);
     let mut report = PushReport::default();
     let skip = skip.unwrap_or_default();
     let result = push(&app, &state, include_deletions, only.as_deref(), &skip, fast.unwrap_or(false), &mut report).await;
@@ -463,99 +484,11 @@ pub async fn project_push(
     result.map(|()| report)
 }
 
-/// A file packed into the archive: what it is, and where its compressed bytes end.
-struct Packed<'a> {
-    path: &'a str,
-    sig: Sig,
-    end: u64,
-}
-
-/// Fast mode: the changed files travel as one compressed archive, which the server unpacks in
-/// place (`tar`), so a slow link carries fewer bytes and one file instead of many. Progress still
-/// reads per file: each file's share of the archive is known from packing it.
-async fn push_packed(
-    lanes: &[Arc<ssh::Connection>],
-    root: &Path,
-    remote_dir: &str,
-    uploads: &[Change],
-    bytes_total: u64,
-    emit: &(dyn Fn(usize, Option<&str>, u64, Option<&'static str>) + Sync),
-    mark: &(dyn Fn(&str, Option<(Sig, Option<ServerSig>)>) + Sync),
-) -> Result<(), String> {
-    let id = uuid::Uuid::new_v4().simple().to_string();
-    let (local, mut archive) = fast::create("someprix-push")?;
-    let pack_fail = |e: &dyn std::fmt::Display| format!("Pack failed: {e}");
-
-    // Pack: each file is read here and compressed on a worker thread.
-    let mut packed = Vec::with_capacity(uploads.len());
-    for change in uploads {
-        emit(0, Some(&change.path), 0, Some("packing"));
-        let path = root.join(&change.path);
-        let bytes = tokio::fs::read(&path)
-            .await
-            .map_err(|e| format!("Read failed: {}: {e}", change.path))?;
-        let mtime = tokio::fs::metadata(&path).await.map(|m| project::mtime_ms(&m)).unwrap_or(0);
-        let sig = Sig {
-            size: bytes.len() as u64,
-            mtime,
-            hash: xxhash_rust::xxh3::xxh3_64(&bytes),
-        };
-        let rel = change.path.clone();
-        archive = tauri::async_runtime::spawn_blocking(move || -> std::io::Result<fast::Archive> {
-            let mut header = tar::Header::new_gnu();
-            header.set_entry_type(tar::EntryType::Regular);
-            header.set_size(bytes.len() as u64);
-            header.set_mode(0o644);
-            header.set_mtime(mtime / 1000);
-            archive.append_data(&mut header, &rel, bytes.as_slice())?;
-            Ok(archive)
-        })
-        .await
-        .map_err(|e| pack_fail(&e))?
-        .map_err(|e| pack_fail(&e))?;
-        let end = fast::written(&archive);
-        packed.push(Packed { path: &change.path, sig, end });
-    }
-    let archive_len = fast::finish(archive).await?;
-
-    // Send: progress maps the archive's bytes back onto the files inside it.
-    let archive_name = format!(".someprix-push-{id}.tar.gz");
-    let remote_archive = ssh::join(remote_dir, &archive_name);
-    let conn = &lanes[0];
-    emit(0, packed.first().map(|p| p.path), 0, None);
-    let meter = Meter::default();
-    let sending = async {
-        if turbo::split_upload(archive_len, lanes.len()) {
-            turbo::upload_split(lanes, &local.0, &remote_archive, archive_len, &meter, &|| false).await
-        } else {
-            turbo::upload_one(conn, &local.0, &remote_archive, &meter, &|| false).await
-        }
-    };
-    let sent = turbo::with_ticker(sending, || {
-        let sent = meter.bytes();
-        let done = packed.iter().take_while(|p| p.end <= sent).count();
-        let current = packed.get(done).or(packed.last()).map(|p| p.path);
-        let share = sent as f64 / archive_len.max(1) as f64;
-        emit(done, current, (share * bytes_total as f64) as u64, None);
-    })
-    .await;
-    if let Err(error) = sent {
-        let _ = conn.remove(&remote_archive).await;
-        return Err(error);
-    }
-    emit(packed.len(), packed.last().map(|p| p.path), bytes_total, None);
-
-    emit(packed.len(), None, bytes_total, Some("unpacking"));
-    fast::unpack_remote(conn, remote_dir, &archive_name).await?;
-    // tar sets each file's size and modified time (to the second) from the archive.
-    for file in packed {
-        let server = ServerSig {
-            size: file.sig.size,
-            mtime: file.sig.mtime / 1000,
-        };
-        mark(file.path, Some((file.sig, Some(server))));
-    }
-    Ok(())
+/// Stops the running push. What it already sent is removed again, so the server stays as it was;
+/// once files are being moved into place it's too late.
+#[tauri::command]
+pub fn project_push_cancel(state: State<'_, AppState>) {
+    state.push_cancel.store(true, Ordering::SeqCst);
 }
 
 fn in_scope(path: &str, only: Option<&[String]>) -> bool {
@@ -564,6 +497,29 @@ fn in_scope(path: &str, only: Option<&[String]>) -> bool {
             .iter()
             .any(|p| path == p || path.strip_prefix(p.as_str()).is_some_and(|rest| rest.starts_with('/')))
     })
+}
+
+/// A project's push history (newest first) is kept next to its "last pushed" snapshot.
+fn history_path(state: &AppState, root: &str) -> PathBuf {
+    state.store.baseline_path(root).with_extension("history.json")
+}
+
+/// Everything a push works with, handed to the normal and fast ways of doing it.
+struct Pushing<'a> {
+    lanes: &'a [Arc<ssh::Connection>],
+    root: &'a Path,
+    remote_dir: &'a str,
+    /// Where the old copies go, and the biggest one kept; none when this project keeps no backups.
+    backup: Option<(&'a str, u64)>,
+    shell: bool,
+    bytes_total: u64,
+    cancelled: &'a (dyn Fn() -> bool + Sync),
+    emit: &'a (dyn Fn(usize, Option<&str>, u64, Option<&'static str>) + Sync),
+    /// Records a file as pushed (with how the server's copy looks now), or as deleted there.
+    mark: &'a (dyn Fn(&str, Option<(Sig, Option<ServerSig>)>) + Sync),
+    /// What a file was last pushed as, before this push.
+    before: &'a (dyn Fn(&str) -> Option<Sig> + Sync),
+    entry: &'a Mutex<backup::Entry>,
 }
 
 async fn push(
@@ -576,8 +532,8 @@ async fn push(
     report: &mut PushReport,
 ) -> Result<(), String> {
     let info = project_info(state).ok_or("No project open")?;
-    let host_id = info.host_id.ok_or("No server selected")?;
-    let remote_dir = info.remote_dir.ok_or("No destination set")?;
+    let host_id = info.host_id.clone().ok_or("No server selected")?;
+    let remote_dir = info.remote_dir.clone().ok_or("No destination set")?;
     let lanes = state.ssh.lanes(&state.store, &host_id, turbo::LANES).await?;
     let _deadlines: Vec<_> = lanes.iter().map(|lane| lane.transfer_deadline()).collect();
     let conn = &lanes[0];
@@ -604,39 +560,125 @@ async fn push(
                 path: path.map(str::to_string),
                 bytes_done: bytes_done.min(bytes_total),
                 bytes_total,
-                finishing: stage == Some("unpacking"),
+                finishing: stage == Some("placing"),
                 stage,
             },
         );
     };
-    let progress = |done: usize, path: Option<&str>, bytes_done: u64| emit(done, path, bytes_done, None);
-    // A pushed file: what was sent, and how the server's copy looks now (for the next push's
-    // conflict check). `None`: deleted on the server.
+
+    // Where the old copies go, if this project keeps backups.
+    let settings = state.store.settings();
+    let backup_root = backup::root(conn, &settings.backup_root);
+    let scope_dir = ssh::join(&backup_root, &backup::project_scope(&info.name, &format!("{}|{destination}", info.root)));
+    let id = backup::new_id();
+    let backup_dir = settings
+        .backs_up(state.store.project_link(&info.root).backup)
+        .then(|| ssh::join(&scope_dir, &id));
+    // Commands help with backups (copies across disks, quick cleanup); not needed without.
+    let shell = backup_dir.is_some() && backup::has_shell(conn).await;
+    let entry = Mutex::new(backup::Entry::new(&host_id, &remote_dir, backup_dir.clone(), id));
+
+    // Marks are saved as files finish (at most once a second), so a crash or a power cut loses
+    // little: at worst a few files are pushed again.
+    let last_save = Mutex::new(std::time::Instant::now());
     let mark = |rel: &str, pushed: Option<(Sig, Option<ServerSig>)>| {
         let mut guard = state.project.lock().unwrap();
         if let Some(project) = guard.as_mut().filter(|p| p.root == root) {
             project.mark_pushed(rel, pushed.map(|(sig, _)| sig));
             project.record_server(&destination, rel, pushed.and_then(|(_, server)| server));
+            let mut last = last_save.lock().unwrap();
+            if last.elapsed() >= std::time::Duration::from_secs(1) {
+                project.save_baseline();
+                project.save_server();
+                *last = std::time::Instant::now();
+            }
         }
+    };
+    let before = |rel: &str| state.project.lock().unwrap().as_ref().and_then(|p| p.baseline_sig(rel));
+    let cancelled = || state.push_cancel.load(Ordering::SeqCst);
+    let limit = settings.skip_over_mb.saturating_mul(1024 * 1024);
+    let pushing = Pushing {
+        lanes: &lanes,
+        root: &root,
+        remote_dir: &remote_dir,
+        backup: backup_dir.as_deref().map(|dir| (dir, limit)),
+        shell,
+        bytes_total,
+        cancelled: &cancelled,
+        emit: &emit,
+        mark: &mark,
+        before: &before,
+        entry: &entry,
     };
 
     // Fast mode needs tar on the server; without it the files go the ordinary way.
     let fast = fast && !uploads.is_empty() && fast::remote_has_tar(conn).await;
-    if fast {
-        push_packed(&lanes, &root, &remote_dir, &uploads, bytes_total, &emit, &mark).await?;
-        report.uploaded = uploads.len();
-        report.fast = true;
+    let result = if fast {
+        push_packed(&pushing, &uploads, &deletions, report).await
     } else {
-        // Each lane takes the next file; a big one is split across every lane.
-        let meter = Meter::default();
-        let made_dirs = tokio::sync::Mutex::new(HashSet::new());
+        push_files(&pushing, &uploads, &deletions, report).await
+    };
+    emit(total, None, bytes_total, None);
+
+    // Whatever changed on the server goes into the history (even a push that failed partway), so
+    // it can be undone; old backups past the limits go.
+    let entry = entry.into_inner().unwrap();
+    if backup_dir.is_some() {
+        report.backed_up = entry.files.iter().filter(|f| f.backed_up).count();
+        report.not_backed_up = entry.files.iter().filter(|f| f.action != backup::Action::Added && !f.backed_up).count();
+    }
+    if entry.files.is_empty() {
+        if let Some(dir) = &backup_dir {
+            backup::delete_dir(conn, shell, &backup_root, dir).await;
+        }
+    } else {
+        report.history = Some(entry.id.clone());
+        let path = history_path(state, &info.root);
+        let mut entries = backup::load(&path);
+        entries.insert(0, entry);
+        let entries = backup::prune(conn, shell, &settings, &backup_root, &scope_dir, &host_id, entries).await;
+        backup::save(&path, &entries);
+    }
+    result
+}
+
+/// Normal mode: each file goes up under a temporary name beside its place, so a cancel or a
+/// failure leaves the server as it was. Once all have arrived, the old copies are kept (when
+/// backing up) and each file is moved into place.
+async fn push_files(p: &Pushing<'_>, uploads: &[Change], deletions: &[Change], report: &mut PushReport) -> Result<(), String> {
+    let conn = &p.lanes[0];
+    let meter = Meter::default();
+    let staged: Vec<(String, String)> = uploads
+        .iter()
+        .map(|change| {
+            let target = ssh::join(p.remote_dir, &change.path);
+            (format!("{target}{PART_SUFFIX}"), target)
+        })
+        .collect();
+    let sigs: Vec<Mutex<Option<Sig>>> = uploads.iter().map(|_| Mutex::new(None)).collect();
+    let mut made_dirs = HashSet::new();
+    let mut created_dirs = Vec::new();
+
+    // Up, under temporary names. Folders first, one at a time.
+    let sent: Result<bool, String> = async {
+        let mut dirs: Vec<&str> = uploads.iter().filter_map(|c| c.path.rsplit_once('/').map(|(dir, _)| dir)).collect();
+        dirs.sort_unstable();
+        dirs.dedup();
+        for dir in dirs {
+            if (p.cancelled)() {
+                return Ok(false);
+            }
+            conn.ensure_dirs(p.remote_dir, dir, &mut made_dirs, &mut created_dirs).await?;
+        }
         let every: Vec<usize> = (0..uploads.len()).collect();
-        let (uploads, root, remote_dir, meter, made_dirs, mark, all_lanes) =
-            (&uploads, &root, &remote_dir, &meter, &made_dirs, &mark, &lanes);
-        let pushing = turbo::each(&lanes, turbo::UPLOAD_STREAMS, &every, |lane, i| async move {
+        let (staged, sigs, meter) = (&staged, &sigs, &meter);
+        let sending = turbo::each(p.lanes, turbo::UPLOAD_STREAMS, &every, |lane, i| async move {
+            if (p.cancelled)() {
+                return Ok(false);
+            }
             let change = &uploads[i];
             meter.start(&change.path);
-            let local = root.join(&change.path);
+            let local = p.root.join(&change.path);
             let bytes = tokio::fs::read(&local)
                 .await
                 .map_err(|e| format!("Read failed: {}: {e}", change.path))?;
@@ -646,38 +688,489 @@ async fn push(
                 mtime,
                 hash: xxhash_rust::xxh3::xxh3_64(&bytes),
             };
-            if let Some((dir, _)) = change.path.rsplit_once('/') {
-                let mut made = made_dirs.lock().await;
-                lane.ensure_dirs(remote_dir, dir, &mut made, &mut Vec::new()).await?;
-            }
-            let target = ssh::join(remote_dir, &change.path);
-            if turbo::split_upload(sig.size, all_lanes.len()) {
-                turbo::upload_split(all_lanes, &local, &target, sig.size, meter, &|| false).await?;
+            let temp = &staged[i].0;
+            if turbo::split_upload(sig.size, p.lanes.len()) {
+                if !turbo::upload_split(p.lanes, &local, temp, sig.size, meter, p.cancelled).await? {
+                    return Ok(false);
+                }
             } else {
                 let mut counted = 0;
-                lane.upload(&target, &bytes, |sent| {
+                lane.upload(temp, &bytes, |sent| {
                     meter.add(sent as u64 - counted);
                     counted = sent as u64;
                 })
                 .await?;
             }
+            *sigs[i].lock().unwrap() = Some(sig);
             meter.finish_file();
-            let server = conflicts::server_sig(&lane, &target).await.ok().flatten();
-            mark(&change.path, Some((sig, server)));
             Ok(true)
         });
-        turbo::with_ticker(pushing, || progress(meter.done(), meter.current().as_deref(), meter.bytes())).await?;
-        report.uploaded = meter.done();
+        let finished = turbo::with_ticker(sending, || (p.emit)(meter.done(), meter.current().as_deref(), meter.bytes(), None)).await?;
+        Ok(finished && !(p.cancelled)())
     }
-    let bytes_done = bytes_total;
-    for change in &deletions {
-        progress(report.uploaded + report.deleted, Some(&change.path), bytes_done);
-        conn.remove(&ssh::join(&remote_dir, &change.path)).await?;
-        mark(&change.path, None);
+    .await;
+    match sent {
+        Ok(true) => {}
+        Ok(false) => {
+            discard_staged(p.lanes, &staged, &created_dirs).await;
+            report.cancelled = true;
+            return Ok(());
+        }
+        Err(error) => {
+            discard_staged(p.lanes, &staged, &created_dirs).await;
+            return Err(error);
+        }
+    }
+
+    // Everything arrived: from here on it runs to the end.
+    (p.emit)(uploads.len(), None, p.bytes_total, Some("placing"));
+    p.entry.lock().unwrap().created_dirs = created_dirs.clone();
+    let targets: Vec<&str> = uploads.iter().chain(deletions).map(|c| c.path.as_str()).collect();
+    let existing: Vec<Mutex<Option<ServerSig>>> = targets.iter().map(|_| Mutex::new(None)).collect();
+    let every: Vec<usize> = (0..targets.len()).collect();
+    let (targets_ref, existing_ref) = (&targets, &existing);
+    let looked = turbo::each(p.lanes, turbo::UPLOAD_STREAMS, &every, |lane, i| async move {
+        let now = conflicts::server_sig(&lane, &ssh::join(p.remote_dir, targets_ref[i])).await?;
+        *existing_ref[i].lock().unwrap() = now;
+        Ok(true)
+    })
+    .await;
+    if let Err(error) = looked {
+        discard_staged(p.lanes, &staged, &created_dirs).await;
+        return Err(error);
+    }
+    let existing: Vec<Option<ServerSig>> = existing.into_iter().map(|m| m.into_inner().unwrap()).collect();
+
+    // The old copies, kept before anything is replaced or deleted. If that fails, nothing has
+    // changed yet: stop, and leave the server as it was.
+    let mut kept = vec![false; targets.len()];
+    if let Some((backup_dir, limit)) = p.backup {
+        let wanted: Vec<usize> = every.iter().copied().filter(|&i| existing[i].is_some_and(|s| s.size <= limit)).collect();
+        let paths: Vec<String> = wanted.iter().map(|&i| targets[i].to_string()).collect();
+        match backup::keep(p.lanes, p.shell, p.remote_dir, backup_dir, &paths).await {
+            Ok(flags) => {
+                for (&i, flag) in wanted.iter().zip(flags) {
+                    kept[i] = flag;
+                }
+            }
+            Err(error) => {
+                discard_staged(p.lanes, &staged, &created_dirs).await;
+                return Err(format!("Backup failed: {error}"));
+            }
+        }
+    }
+
+    // Each file into place: the old one goes, the new one takes its name.
+    let placed: Vec<AtomicBool> = uploads.iter().map(|_| AtomicBool::new(false)).collect();
+    let every_upload: Vec<usize> = (0..uploads.len()).collect();
+    let (staged_ref, sigs_ref, existing_ref, kept_ref, placed_ref) = (&staged, &sigs, &existing, &kept, &placed);
+    let placing = turbo::each(p.lanes, turbo::UPLOAD_STREAMS, &every_upload, |lane, i| async move {
+        let (temp, target) = &staged_ref[i];
+        let change = &uploads[i];
+        if existing_ref[i].is_some() {
+            lane.remove(target).await?;
+        }
+        lane.rename(temp, target).await?;
+        placed_ref[i].store(true, Ordering::SeqCst);
+        let sig = (*sigs_ref[i].lock().unwrap()).ok_or_else(|| format!("Upload lost: {}", change.path))?;
+        let after = conflicts::server_sig(&lane, target).await.ok().flatten();
+        let before = (p.before)(&change.path);
+        (p.mark)(&change.path, Some((sig, after)));
+        p.entry.lock().unwrap().files.push(backup::EntryFile {
+            path: change.path.clone(),
+            action: if existing_ref[i].is_some() { backup::Action::Changed } else { backup::Action::Added },
+            backed_up: kept_ref[i],
+            size: existing_ref[i].map_or(sig.size, |old| old.size),
+            after,
+            before,
+        });
+        Ok(true)
+    })
+    .await;
+    report.uploaded = placed.iter().filter(|done| done.load(Ordering::SeqCst)).count();
+    if let Err(error) = placing {
+        // The ones that didn't make it into place go again next time; their temporary copies go now.
+        let left: Vec<(String, String)> = staged
+            .iter()
+            .zip(&placed)
+            .filter(|(_, done)| !done.load(Ordering::SeqCst))
+            .map(|(s, _)| s.clone())
+            .collect();
+        discard_staged(p.lanes, &left, &[]).await;
+        return Err(error);
+    }
+
+    for (offset, change) in deletions.iter().enumerate() {
+        let i = uploads.len() + offset;
+        (p.emit)(report.uploaded + report.deleted, Some(&change.path), p.bytes_total, Some("placing"));
+        if existing[i].is_some() {
+            conn.remove(&ssh::join(p.remote_dir, &change.path)).await?;
+            let before = (p.before)(&change.path);
+            p.entry.lock().unwrap().files.push(backup::EntryFile {
+                path: change.path.clone(),
+                action: backup::Action::Deleted,
+                backed_up: kept[i],
+                size: existing[i].map_or(0, |old| old.size),
+                after: None,
+                before,
+            });
+        }
+        (p.mark)(&change.path, None);
         report.deleted += 1;
     }
-    progress(total, None, bytes_total);
     Ok(())
+}
+
+/// Fast mode: the changed files travel as one compressed archive. The server unpacks it into a
+/// hidden folder beside the files, keeps the old copies (when backing up), then moves each file
+/// into place and deletes the deleted ones, all in one go. Progress still reads per file: each
+/// file's share of the archive is known from packing it.
+async fn push_packed(p: &Pushing<'_>, uploads: &[Change], deletions: &[Change], report: &mut PushReport) -> Result<(), String> {
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    let (local, mut archive) = fast::create("someprix-push")?;
+    let pack_fail = |e: &dyn std::fmt::Display| format!("Pack failed: {e}");
+
+    // Pack: each file is read here and compressed on a worker thread.
+    let mut packed: Vec<(&str, Sig, u64)> = Vec::with_capacity(uploads.len());
+    for change in uploads {
+        if (p.cancelled)() {
+            report.cancelled = true;
+            return Ok(());
+        }
+        (p.emit)(0, Some(&change.path), 0, Some("packing"));
+        let path = p.root.join(&change.path);
+        let bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|e| format!("Read failed: {}: {e}", change.path))?;
+        let mtime = tokio::fs::metadata(&path).await.map(|m| project::mtime_ms(&m)).unwrap_or(0);
+        let sig = Sig {
+            size: bytes.len() as u64,
+            mtime,
+            hash: xxhash_rust::xxh3::xxh3_64(&bytes),
+        };
+        let rel = change.path.clone();
+        archive = tauri::async_runtime::spawn_blocking(move || -> std::io::Result<fast::Archive> {
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_mtime(mtime / 1000);
+            archive.append_data(&mut header, &rel, bytes.as_slice())?;
+            Ok(archive)
+        })
+        .await
+        .map_err(|e| pack_fail(&e))?
+        .map_err(|e| pack_fail(&e))?;
+        packed.push((&change.path, sig, fast::written(&archive)));
+    }
+    let archive_len = fast::finish(archive).await?;
+
+    // Send: progress maps the archive's bytes back onto the files inside it.
+    let archive_name = format!(".someprix-push-{id}.tar.gz");
+    let remote_archive = ssh::join(p.remote_dir, &archive_name);
+    let conn = &p.lanes[0];
+    (p.emit)(0, packed.first().map(|f| f.0), 0, None);
+    let meter = Meter::default();
+    let sending = async {
+        if turbo::split_upload(archive_len, p.lanes.len()) {
+            turbo::upload_split(p.lanes, &local.0, &remote_archive, archive_len, &meter, p.cancelled).await
+        } else {
+            turbo::upload_one(conn, &local.0, &remote_archive, &meter, p.cancelled).await
+        }
+    };
+    let sent = turbo::with_ticker(sending, || {
+        let sent = meter.bytes();
+        let done = packed.iter().take_while(|f| f.2 <= sent).count();
+        let current = packed.get(done).or(packed.last()).map(|f| f.0);
+        let share = sent as f64 / archive_len.max(1) as f64;
+        (p.emit)(done, current, (share * p.bytes_total as f64) as u64, None);
+    })
+    .await;
+    match sent {
+        Ok(true) if !(p.cancelled)() => {}
+        Ok(_) => {
+            let _ = conn.remove(&remote_archive).await;
+            report.cancelled = true;
+            return Ok(());
+        }
+        Err(error) => {
+            let _ = conn.remove(&remote_archive).await;
+            return Err(error);
+        }
+    }
+
+    (p.emit)(packed.len(), None, p.bytes_total, Some("placing"));
+    let names: Vec<String> = packed.iter().map(|f| f.0.to_string()).collect();
+    let gone: Vec<String> = deletions.iter().map(|c| c.path.clone()).collect();
+    let plan = fast::SwapPlan {
+        dirs: &[],
+        files: &names,
+        deletions: &gone,
+        backup: p.backup,
+    };
+    let swapped = fast::unpack_swap(conn, p.remote_dir, &archive_name, &plan).await?;
+    report.fast = true;
+    for (kind, size, path) in &swapped.lines {
+        if *kind == 'M' {
+            p.entry.lock().unwrap().created_dirs.push(ssh::join(p.remote_dir, path));
+            continue;
+        }
+        let before = (p.before)(path);
+        let file = |action, backed_up, size, after| backup::EntryFile {
+            path: path.clone(),
+            action,
+            backed_up,
+            size,
+            after,
+            before,
+        };
+        match kind {
+            'A' | 'B' | 'C' => {
+                let Some(&(_, sig, _)) = packed.iter().find(|f| f.0 == path.as_str()) else { continue };
+                // tar sets each file's size and modified time (to the second) from the archive.
+                let after = ServerSig {
+                    size: sig.size,
+                    mtime: sig.mtime / 1000,
+                };
+                (p.mark)(path, Some((sig, Some(after))));
+                let entry = match kind {
+                    'A' => file(backup::Action::Added, false, sig.size, Some(after)),
+                    _ => file(backup::Action::Changed, *kind == 'B', *size, Some(after)),
+                };
+                p.entry.lock().unwrap().files.push(entry);
+                report.uploaded += 1;
+            }
+            'X' | 'D' => {
+                (p.mark)(path, None);
+                p.entry.lock().unwrap().files.push(file(backup::Action::Deleted, *kind == 'X', *size, None));
+                report.deleted += 1;
+            }
+            'G' => {
+                (p.mark)(path, None);
+                report.deleted += 1;
+            }
+            _ => {}
+        }
+    }
+    match swapped.failure {
+        Some(failure) => Err(failure),
+        None => Ok(()),
+    }
+}
+
+// ---------- History and undo ----------
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoReport {
+    /// Files changed on the server since that push or upload. Nothing was undone: ask, then
+    /// undo again with `force`.
+    changed_since: Vec<String>,
+    done: bool,
+    restored: usize,
+    removed: usize,
+    /// Files that had no backup, left as they are.
+    missed: usize,
+}
+
+/// The open project's pushes, newest first.
+#[tauri::command]
+pub fn project_history(state: State<'_, AppState>) -> Result<Vec<backup::Entry>, String> {
+    let root = project_info(&state).ok_or("No project open")?.root;
+    Ok(backup::load(&history_path(&state, &root)))
+}
+
+/// Undoes the latest push of the open project: the server gets back what that push replaced or
+/// deleted, loses what it added, and those files show as changes here again.
+#[tauri::command]
+pub async fn project_undo(app: AppHandle, state: State<'_, AppState>, id: String, force: bool) -> Result<UndoReport, String> {
+    let root = project_info(&state).ok_or("No project open")?.root;
+    let path = history_path(&state, &root);
+    let (report, entry) = undo_entry(&state, &path, &id, force).await?;
+    let Some(entry) = entry else { return Ok(report) };
+
+    // The "last pushed" records go back to before the push, so the local files that differ from
+    // what's on the server again show as changes.
+    let conn = state.ssh.get(&entry.host_id).await?;
+    let destination = conflicts::target_key(&entry.host_id, &entry.remote_dir);
+    let mut now = Vec::new();
+    for file in &entry.files {
+        now.push(conflicts::server_sig(&conn, &ssh::join(&entry.remote_dir, &file.path)).await.ok().flatten());
+    }
+    let changes = {
+        let mut guard = state.project.lock().unwrap();
+        guard.as_mut().filter(|p| p.root == Path::new(&root)).map(|project| {
+            for (file, server) in entry.files.iter().zip(now) {
+                if file.action == backup::Action::Added || file.backed_up {
+                    project.mark_pushed(&file.path, file.before);
+                    project.record_server(&destination, &file.path, server);
+                }
+            }
+            project.save_baseline();
+            project.save_server();
+            project.changes()
+        })
+    };
+    if let Some(changes) = changes {
+        let _ = app.emit(CHANGES_EVENT, changes);
+    }
+    Ok(report)
+}
+
+/// Undoes the newest entry in a history file, if it's `id`. Returns the entry undone.
+async fn undo_entry(state: &AppState, path: &Path, id: &str, force: bool) -> Result<(UndoReport, Option<backup::Entry>), String> {
+    let mut entries = backup::load(path);
+    match entries.iter().position(|e| e.id == id) {
+        Some(0) => {}
+        Some(_) => return Err("Undo the newer ones first".into()),
+        None => return Err("Already undone, or too old to undo".into()),
+    }
+    let entry = entries[0].clone();
+    let lanes = state.ssh.lanes(&state.store, &entry.host_id, turbo::LANES).await?;
+    let conn = &lanes[0];
+    if !force {
+        let changed_since = backup::changed_since(conn, &entry).await;
+        if !changed_since.is_empty() {
+            return Ok((UndoReport { changed_since, ..Default::default() }, None));
+        }
+    }
+    let shell = backup::has_shell(conn).await;
+    let undone = backup::undo(&lanes, shell, &entry).await?;
+    entries.remove(0);
+    backup::save(path, &entries);
+    let report = UndoReport {
+        changed_since: Vec::new(),
+        done: true,
+        restored: undone.restored,
+        removed: undone.removed,
+        missed: undone.missed,
+    };
+    Ok((report, Some(entry)))
+}
+
+/// Deletes the backups in a history file that live on `host_id`'s server (entries stay, without
+/// a backup). Returns the entries.
+async fn clear_backups(state: &AppState, path: &Path, host_id: &str) -> Result<Vec<backup::Entry>, String> {
+    let mut entries = backup::load(path);
+    let conn = state.ssh.get(host_id).await?;
+    let shell = backup::has_shell(&conn).await;
+    for entry in entries.iter_mut().filter(|e| e.host_id == host_id) {
+        if let Some(dir) = entry.backup_dir.take() {
+            backup::delete_dir(&conn, shell, &backup::scope_root(&dir), &dir).await;
+        }
+    }
+    backup::save(path, &entries);
+    Ok(entries)
+}
+
+/// Deletes the open project's backups on its server.
+#[tauri::command]
+pub async fn project_backups_clear(state: State<'_, AppState>) -> Result<Vec<backup::Entry>, String> {
+    let info = project_info(&state).ok_or("No project open")?;
+    let host_id = info.host_id.ok_or("No server selected")?;
+    clear_backups(&state, &history_path(&state, &info.root), &host_id).await
+}
+
+/// SFTP uploads, newest first.
+#[tauri::command]
+pub fn sftp_history(state: State<'_, AppState>) -> Vec<backup::Entry> {
+    backup::load(&state.store.sftp_history_path())
+}
+
+/// Undoes the latest SFTP upload: files it replaced come back, files it added go.
+#[tauri::command]
+pub async fn sftp_undo(state: State<'_, AppState>, id: String, force: bool) -> Result<UndoReport, String> {
+    let path = state.store.sftp_history_path();
+    undo_entry(&state, &path, &id, force).await.map(|(report, _)| report)
+}
+
+/// Deletes the SFTP upload backups on a server.
+#[tauri::command]
+pub async fn sftp_backups_clear(state: State<'_, AppState>, host_id: String) -> Result<Vec<backup::Entry>, String> {
+    clear_backups(&state, &state.store.sftp_history_path(), &host_id).await
+}
+
+// ---------- Settings ----------
+
+#[tauri::command]
+pub fn settings_get(state: State<'_, AppState>) -> Settings {
+    state.store.settings()
+}
+
+#[tauri::command]
+pub fn settings_set(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+    let mut settings = settings;
+    settings.keep_pushes = settings.keep_pushes.clamp(1, 1000);
+    settings.keep_days = settings.keep_days.clamp(1, 3650);
+    if settings.backup_root.trim().is_empty() {
+        settings.backup_root = Settings::default().backup_root;
+    }
+    state.store.set_settings(settings)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectChoice {
+    root: String,
+    name: String,
+    /// Switched on or off for this project; none follows the setting for all projects.
+    backup: Option<bool>,
+}
+
+/// Every project folder Someprix knows, with its backup choice.
+#[tauri::command]
+pub fn backup_projects(state: State<'_, AppState>) -> Vec<ProjectChoice> {
+    state
+        .store
+        .projects()
+        .into_iter()
+        .map(|(root, link)| ProjectChoice {
+            name: Path::new(&root).file_name().map_or_else(|| root.clone(), |n| n.to_string_lossy().into_owned()),
+            root,
+            backup: link.backup,
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn project_backup_set(state: State<'_, AppState>, root: String, backup: Option<bool>) -> Result<(), String> {
+    let mut link = state.store.project_link(&root);
+    link.backup = backup;
+    state.store.set_project_link(&root, link)
+}
+
+// ---------- Editor drafts ----------
+
+fn draft_file(state: &AppState, key: &str) -> PathBuf {
+    let id = xxhash_rust::xxh3::xxh3_64(key.as_bytes());
+    state.store.drafts_dir().join(format!("{id:016x}.json"))
+}
+
+/// Every draft kept (each as the JSON the editor wrote).
+#[tauri::command]
+pub fn drafts_list(state: State<'_, AppState>) -> Vec<String> {
+    let Ok(read) = std::fs::read_dir(state.store.drafts_dir()) else {
+        return Vec::new();
+    };
+    read.filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+        .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+        .collect()
+}
+
+#[tauri::command]
+pub fn draft_put(state: State<'_, AppState>, key: String, body: String) -> Result<(), String> {
+    store::write_atomic(&draft_file(&state, &key), body.as_bytes())
+}
+
+#[tauri::command]
+pub fn draft_drop(state: State<'_, AppState>, key: String) {
+    let _ = std::fs::remove_file(draft_file(&state, &key));
+}
+
+#[tauri::command]
+pub fn drafts_clear(state: State<'_, AppState>) {
+    let _ = std::fs::remove_dir_all(state.store.drafts_dir());
 }
 
 /// Before a push: the files about to be pushed (or deleted) that someone changed on the server
@@ -883,6 +1376,11 @@ pub struct UploadReport {
     cancelled: bool,
     /// Items a cancelled upload couldn't remove from the server.
     leftovers: usize,
+    /// The history entry for this upload, when it changed anything: Undo takes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history: Option<String>,
+    /// Old copies of replaced files kept in the backup.
+    backed_up: usize,
     /// The files went as one compressed archive (fast mode).
     fast: bool,
 }
@@ -980,6 +1478,8 @@ async fn download(
                 cancelled: false,
                 leftovers: 0,
                 fast: true,
+                history: None,
+                backed_up: 0,
             };
             match packed {
                 Ok(Some(done)) => {
@@ -1012,6 +1512,8 @@ async fn download(
         cancelled: false,
         leftovers: 0,
         fast: false,
+        history: None,
+        backed_up: 0,
     };
     let total = plan.files.len();
     let bytes_total: u64 = plan.files.iter().map(|f| f.size).sum();
@@ -1142,19 +1644,48 @@ async fn upload(
         cancelled: false,
         leftovers: 0,
         fast: false,
+        history: None,
+        backed_up: 0,
     };
     let total = plan.files.len();
     let bytes_total: u64 = plan.files.iter().map(|f| f.size).sum();
 
-    // Fast mode: one archive goes up and the server unpacks it.
+    // Fast mode: one archive goes up, and the server unpacks it and puts each file in place.
     if fast && !plan.files.is_empty() && fast::remote_has_tar(conn).await {
         let emit = |step: fast::Step| emit_transfer(app, step);
         report.fast = true;
-        if fast::upload(&lanes, &plan, remote_dir, &cancelled, &emit).await? {
-            report.bytes = bytes_total;
-        } else {
+        let keeping = Keeping::sftp(state, conn).await;
+        let Some(swapped) = fast::upload(&lanes, &plan, remote_dir, keeping.backup(), &cancelled, &emit).await? else {
             report.cancelled = true;
+            return Ok(report);
+        };
+        let mut entry = keeping.entry(host_id, remote_dir);
+        let mut placed = Vec::new();
+        for (kind, size, path) in &swapped.lines {
+            match *kind {
+                'M' => entry.created_dirs.push(ssh::join(remote_dir, path)),
+                'A' | 'B' | 'C' => placed.push((*kind, *size, path.clone())),
+                _ => {}
+            }
         }
+        let names: Vec<String> = placed.iter().map(|p| p.2.clone()).collect();
+        let after = backup::stat_all(&lanes, remote_dir, &names).await.unwrap_or_else(|_| vec![None; names.len()]);
+        for ((kind, size, path), after) in placed.into_iter().zip(after) {
+            let new_size = plan.files.iter().find(|f| f.rel == path).map_or(0, |f| f.size);
+            entry.files.push(backup::EntryFile {
+                action: if kind == 'A' { backup::Action::Added } else { backup::Action::Changed },
+                backed_up: kind == 'B',
+                size: if kind == 'A' { new_size } else { size },
+                after,
+                before: None,
+                path,
+            });
+        }
+        keeping.record(state, conn, host_id, entry, &mut report).await;
+        if let Some(failure) = swapped.failure {
+            return Err(failure);
+        }
+        report.bytes = bytes_total;
         return Ok(report);
     }
     let meter = Meter::default();
@@ -1234,37 +1765,127 @@ async fn upload(
 
     match outcome {
         Ok(true) => {
-            // Everything arrived: move each file into place (replacing any older copy), all lanes
-            // at once.
+            // Everything arrived. The old copies of files it replaces are kept first (when backing
+            // up); if that fails, nothing has changed yet, so it stops there.
             progress(total, None, bytes_total, true);
+            let keeping = Keeping::sftp(state, conn).await;
+            let rels: Vec<String> = plan.files.iter().map(|f| f.rel.clone()).collect();
+            let existing = match backup::stat_all(&lanes, remote_dir, &rels).await {
+                Ok(existing) => existing,
+                Err(error) => {
+                    discard_staged(&lanes, &staged, &created_dirs).await;
+                    return Err(error);
+                }
+            };
+            let mut kept = vec![false; rels.len()];
+            if let Some((dir, limit)) = keeping.backup() {
+                let wanted: Vec<usize> = (0..rels.len()).filter(|&i| existing[i].is_some_and(|s| s.size <= limit)).collect();
+                let paths: Vec<String> = wanted.iter().map(|&i| rels[i].clone()).collect();
+                match backup::keep(&lanes, keeping.shell, remote_dir, dir, &paths).await {
+                    Ok(flags) => {
+                        for (&i, flag) in wanted.iter().zip(flags) {
+                            kept[i] = flag;
+                        }
+                    }
+                    Err(error) => {
+                        discard_staged(&lanes, &staged, &created_dirs).await;
+                        return Err(format!("Backup failed: {error}"));
+                    }
+                }
+            }
+
+            // Then each file into place (replacing any older copy), all lanes at once.
             let every: Vec<usize> = (0..staged.len()).collect();
-            let staged_ref = &staged;
+            let (staged_ref, existing_ref) = (&staged, &existing);
             turbo::each(&lanes, turbo::UPLOAD_STREAMS, &every, |lane, i| async move {
                 let (temp, target) = &staged_ref[i];
-                lane.remove(target).await?;
+                if existing_ref[i].is_some() {
+                    lane.remove(target).await?;
+                }
                 lane.rename(temp, target).await?;
                 Ok(true)
             })
             .await?;
+            let after = backup::stat_all(&lanes, remote_dir, &rels).await.unwrap_or_else(|_| vec![None; rels.len()]);
+            let mut entry = keeping.entry(host_id, remote_dir);
+            entry.created_dirs = created_dirs.clone();
+            for (i, rel) in rels.iter().enumerate() {
+                entry.files.push(backup::EntryFile {
+                    path: rel.clone(),
+                    action: if existing[i].is_some() { backup::Action::Changed } else { backup::Action::Added },
+                    backed_up: kept[i],
+                    size: existing[i].map_or(plan.files[i].size, |old| old.size),
+                    after: after[i],
+                    before: None,
+                });
+            }
+            keeping.record(state, conn, host_id, entry, &mut report).await;
             progress(total, None, bytes_total, false);
             report.bytes = meter.bytes();
             Ok(report)
         }
         Ok(false) => {
             report.cancelled = true;
-            report.leftovers = undo(&lanes, &staged, &created_dirs).await;
+            report.leftovers = discard_staged(&lanes, &staged, &created_dirs).await;
             Ok(report)
         }
         Err(error) => {
-            undo(&lanes, &staged, &created_dirs).await;
+            discard_staged(&lanes, &staged, &created_dirs).await;
             Err(error)
         }
     }
 }
 
-/// Removes what an unfinished upload put on the server: its temporary files (all lanes at once),
-/// then the folders it created (deepest first). Returns how many of those couldn't be removed.
-async fn undo(lanes: &[Arc<ssh::Connection>], staged: &[(String, String)], created_dirs: &[String]) -> usize {
+/// Where an SFTP upload keeps the old copies of the files it replaces, if it does.
+struct Keeping {
+    settings: Settings,
+    root: String,
+    shell: bool,
+    dir: Option<String>,
+    id: String,
+}
+
+impl Keeping {
+    async fn sftp(state: &AppState, conn: &ssh::Connection) -> Self {
+        let settings = state.store.settings();
+        let root = backup::root(conn, &settings.backup_root);
+        let id = backup::new_id();
+        let on = settings.backups != BackupMode::Off && settings.backup_sftp;
+        let dir = on.then(|| ssh::join(&ssh::join(&root, backup::SFTP_SCOPE), &id));
+        let shell = dir.is_some() && backup::has_shell(conn).await;
+        Self { settings, root, shell, dir, id }
+    }
+
+    fn backup(&self) -> Option<(&str, u64)> {
+        self.dir.as_deref().map(|dir| (dir, self.settings.skip_over_mb.saturating_mul(1024 * 1024)))
+    }
+
+    fn entry(&self, host_id: &str, remote_dir: &str) -> backup::Entry {
+        backup::Entry::new(host_id, remote_dir, self.dir.clone(), self.id.clone())
+    }
+
+    /// Saves a finished upload in the history (if it changed anything), and drops old backups.
+    async fn record(&self, state: &AppState, conn: &ssh::Connection, host_id: &str, entry: backup::Entry, report: &mut UploadReport) {
+        if entry.files.is_empty() {
+            if let Some(dir) = &self.dir {
+                backup::delete_dir(conn, self.shell, &self.root, dir).await;
+            }
+            return;
+        }
+        report.history = Some(entry.id.clone());
+        report.backed_up = entry.files.iter().filter(|f| f.backed_up).count();
+        let path = state.store.sftp_history_path();
+        let mut entries = backup::load(&path);
+        entries.insert(0, entry);
+        let scope = ssh::join(&self.root, backup::SFTP_SCOPE);
+        let entries = backup::prune(conn, self.shell, &self.settings, &self.root, &scope, host_id, entries).await;
+        backup::save(&path, &entries);
+    }
+}
+
+/// Removes what an unfinished upload or push put on the server: its temporary files (all lanes at
+/// once), then the folders it created (deepest first). Returns how many couldn't be removed.
+async fn discard_staged(lanes: &[Arc<ssh::Connection>], staged: &[(String, String)], created_dirs: &[String]) -> usize {
     let left = AtomicUsize::new(0);
     let every: Vec<usize> = (0..staged.len()).collect();
     let left_ref = &left;

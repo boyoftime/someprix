@@ -327,6 +327,11 @@ impl Connection {
     /// Runs a shell command on the server and waits up to `limit` for it to finish. Returns its
     /// exit code and everything it printed; a server that won't run commands (an SFTP-only
     /// login, say) gives code 255.
+    /// The login's home folder on the server.
+    pub fn home(&self) -> &str {
+        &self.home
+    }
+
     pub async fn exec(&self, command: &str, limit: Duration) -> Result<(u32, String), String> {
         let fail = |e: &dyn std::fmt::Display| format!("Exec failed: {e}");
         let mut channel = self.handle.channel_open_session().await.map_err(|e| fail(&e))?;

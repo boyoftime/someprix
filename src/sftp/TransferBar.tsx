@@ -1,5 +1,5 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { ArrowDownUp, CircleAlert, CircleCheck, FolderSearch, Gauge, Undo2, X, Zap } from "lucide-react";
+import { ArrowDownUp, CircleAlert, CircleCheck, FolderSearch, Gauge, RotateCcw, Undo2, X, Zap } from "lucide-react";
 import type { PushProgress } from "../lib/api";
 import { formatSize, formatSpeed, formatTimeLeft } from "../lib/format";
 import { FastToggle } from "../ui/FastToggle";
@@ -8,8 +8,12 @@ import { useSmoothFill } from "../ui/useSmoothFill";
 export type FinishedTransfer = {
   tone: "done" | "failed" | "cancelled";
   text: string;
-  /** Something to show in Explorer from here, e.g. a download that went to the Downloads folder. */
+  /** Something to show in the file manager from here, e.g. a download that went to Downloads. */
   reveal?: string;
+  /** An upload that can be taken back: its history entry. */
+  undo?: { id: string; hostId: string };
+  /** Undo needs a yes first: files changed on the server since. */
+  undoForce?: boolean;
 };
 
 type TransferBarProps = {
@@ -29,6 +33,9 @@ type TransferBarProps = {
   /** Cancel was pressed and the transfer is undoing itself. */
   cancelling: boolean;
   onCancel: () => void;
+  /** Takes back the upload that just finished (`force`: even over changes made since). */
+  onUndo: (force: boolean) => void;
+  undoing: boolean;
 };
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -46,6 +53,8 @@ export function TransferBar({
   finished,
   cancelling,
   onCancel,
+  onUndo,
+  undoing,
 }: TransferBarProps) {
   const bytesTotal = progress?.bytesTotal ?? 0;
   const bytesDone = progress?.bytesDone ?? 0;
@@ -75,6 +84,17 @@ export function TransferBar({
               >
                 <FolderSearch size={14} strokeWidth={2} />
                 Show in folder
+              </button>
+            )}
+            {finished.undo && (
+              <button
+                type="button"
+                className={`btn btn-small ${finished.undoForce ? "btn-danger" : "btn-ghost"} transfer-reveal`}
+                onClick={() => onUndo(Boolean(finished.undoForce))}
+                disabled={undoing}
+              >
+                <RotateCcw size={14} strokeWidth={2} />
+                {undoing ? "Undoing…" : finished.undoForce ? "Undo anyway" : "Undo"}
               </button>
             )}
           </span>

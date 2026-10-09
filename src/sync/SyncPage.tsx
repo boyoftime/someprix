@@ -7,6 +7,7 @@ import { loadFast, saveFast } from "../ui/FastToggle";
 import { LocalPane } from "./LocalPane";
 import { ServerPane } from "./ServerPane";
 import { PushDialog } from "./PushDialog";
+import { HistoryDialog } from "./HistoryDialog";
 import { Splitter, useSplit } from "./Splitter";
 
 const FAST_PUSH = "someprix.push.fast";
@@ -28,6 +29,8 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
   const [addingHost, setAddingHost] = useState(false);
   // What the push dialog covers: every change, or only those under some paths. Null when closed.
   const [pushScope, setPushScope] = useState<"all" | string[] | null>(null);
+  // The push history, open; with the push to undo when it came from a push's Undo.
+  const [history, setHistory] = useState<{ undoId?: string } | null>(null);
   const panes = useRef<HTMLDivElement>(null);
   const [split, setSplit] = useSplit();
   // Fast mode: push changes as one compressed archive that the server unpacks.
@@ -114,6 +117,7 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
         onPushPaths={setPushScope}
         fast={fast}
         onFastChange={changeFast}
+        onShowHistory={() => setHistory({})}
       />
       <Splitter container={panes} split={split} onChange={setSplit} />
       <ServerPane
@@ -145,8 +149,10 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
           only={pushScope === "all" ? undefined : pushScope}
           fast={fast}
           onClose={() => setPushScope(null)}
+          onUndo={(undoId) => setHistory({ undoId })}
         />
       )}
+      {history && project && <HistoryDialog undoId={history.undoId} onClose={() => setHistory(null)} />}
     </div>
   );
 }

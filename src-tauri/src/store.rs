@@ -49,6 +49,64 @@ pub struct ProjectLink {
     /// Project paths (files or folders) the user excluded from pushing.
     #[serde(default)]
     pub excluded: Vec<String>,
+    /// Whether pushes keep a backup on the server; None follows the setting for all projects.
+    #[serde(default)]
+    pub backup: Option<bool>,
+}
+
+/// Which pushes keep a backup of the server files they replace or delete.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackupMode {
+    /// Every project, unless switched off for one.
+    #[default]
+    All,
+    /// Only projects switched on.
+    Chosen,
+    Off,
+}
+
+/// What the user can change on the Settings page (the rest lives in the frontend).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Settings {
+    pub backups: BackupMode,
+    /// SFTP uploads that replace server files keep a backup too.
+    pub backup_sftp: bool,
+    /// Backups kept per project: the newest pushes, none older than this many days, and no
+    /// more than this many megabytes in all (the oldest go first).
+    pub keep_pushes: u32,
+    pub keep_days: u32,
+    pub max_backup_mb: u64,
+    /// Files bigger than this are replaced without a backup.
+    pub skip_over_mb: u64,
+    /// Where backups go on the server; "~" is the login's home folder.
+    pub backup_root: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            backups: BackupMode::All,
+            backup_sftp: true,
+            keep_pushes: 10,
+            keep_days: 14,
+            max_backup_mb: 200,
+            skip_over_mb: 50,
+            backup_root: "~/.someprix/backups".into(),
+        }
+    }
+}
+
+impl Settings {
+    /// Whether a project with this choice keeps backups.
+    pub fn backs_up(&self, choice: Option<bool>) -> bool {
+        match self.backups {
+            BackupMode::Off => false,
+            BackupMode::All => choice.unwrap_or(true),
+            BackupMode::Chosen => choice.unwrap_or(false),
+        }
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -60,6 +118,7 @@ struct Data {
     /// The project folder that was open last.
     active_project: Option<String>,
     projects: HashMap<String, ProjectLink>,
+    settings: Settings,
 }
 
 pub struct Store {
@@ -146,6 +205,30 @@ impl Store {
         })
     }
 
+    pub fn projects(&self) -> Vec<(String, ProjectLink)> {
+        let mut list: Vec<_> = self.data.lock().unwrap().projects.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+        list
+    }
+
+    pub fn settings(&self) -> Settings {
+        self.data.lock().unwrap().settings.clone()
+    }
+
+    pub fn set_settings(&self, settings: Settings) -> Result<(), String> {
+        self.update(|data| data.settings = settings)
+    }
+
+    /// The history of SFTP uploads (and their backups).
+    pub fn sftp_history_path(&self) -> PathBuf {
+        self.dir.join("history").join("sftp.json")
+    }
+
+    /// Unsaved editor text, kept so it comes back after a crash.
+    pub fn drafts_dir(&self) -> PathBuf {
+        self.dir.join("drafts")
+    }
+
     /// Where a project's "last pushed" snapshot is kept.
     pub fn baseline_path(&self, root: &str) -> PathBuf {
         let id = xxhash_rust::xxh3::xxh3_64(root.as_bytes());
@@ -153,13 +236,18 @@ impl Store {
     }
 }
 
-/// Writes through a temporary file so a crash can't leave a half-written file behind.
+/// Writes through a temporary file, flushed to disk before it takes the real name, so neither a
+/// crash nor a power cut can leave a half-written file behind.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let temp = path.with_extension("tmp");
-    fs::write(&temp, bytes).map_err(|e| e.to_string())?;
+    let mut file = fs::File::create(&temp).map_err(|e| e.to_string())?;
+    file.write_all(bytes).map_err(|e| e.to_string())?;
+    file.sync_all().map_err(|e| e.to_string())?;
+    drop(file);
     fs::rename(&temp, path).map_err(|e| e.to_string())
 }
 

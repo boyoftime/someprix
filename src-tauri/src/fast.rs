@@ -124,16 +124,93 @@ pub async fn delete_remote(conn: &ssh::Connection, paths: &[String]) -> Option<R
     })
 }
 
-/// Unpacks `archive_name` (already uploaded into `remote_dir`) in place as the login user, like an
-/// SFTP upload, then removes it. Working from inside the folder keeps the archive's name free of
-/// ":", which tar takes for host:path.
-pub async fn unpack_remote(conn: &ssh::Connection, remote_dir: &str, archive_name: &str) -> Result<(), String> {
-    let command = format!(
-        "cd {dir} || exit 1; tar -x -z -o -f {archive}; code=$?; rm -f {archive}; exit $code",
-        dir = ssh::sh_quote(remote_dir),
-        archive = ssh::sh_quote(archive_name),
-    );
+/// What happens on the server once an archive has arrived.
+pub struct SwapPlan<'a> {
+    /// Folders to create (relative), e.g. empty ones from an upload.
+    pub dirs: &'a [String],
+    /// Files in the archive (relative), each put in place as a whole.
+    pub files: &'a [String],
+    /// Files to delete (relative).
+    pub deletions: &'a [String],
+    /// Where the old copies of replaced or deleted files go, and the biggest size kept.
+    pub backup: Option<(&'a str, u64)>,
+}
+
+/// What the server did, file by file: "A" added, "B" replaced (old copy kept), "C" replaced,
+/// "X" deleted (old copy kept), "D" deleted, "G" already gone, "M" folder made; with the old
+/// copy's size where one was kept. Paths are relative.
+pub struct Swapped {
+    pub lines: Vec<(char, u64, String)>,
+    /// Set when it stopped partway; `lines` still say what was done.
+    pub failure: Option<String>,
+}
+
+/// The steps for each file, in shell. `$S` is the folder the archive was unpacked into, `$B` the
+/// backup folder (empty: none) and `$L` the biggest file it keeps.
+const SWAP_FUNCTIONS: &str = r#"keep() {
+  z=0
+  [ -n "$B" ] && [ -f "$1" ] && [ ! -L "$1" ] || return 1
+  z=$(wc -c < "$1" | tr -d " ") || return 1
+  [ "$z" -le "$L" ] || return 1
+  mkdir -p "$B/$(dirname "$1")" || return 1
+  ln "$1" "$B/$1" 2>/dev/null || cp -p "$1" "$B/$1"
+}
+dir() {
+  [ -d "$1" ] && return 0
+  mkdir -p "$1" && echo "M 0 $1"
+}
+put() {
+  dir "$(dirname "$1")" || return 1
+  z=0
+  if [ -e "$1" ] || [ -L "$1" ]; then
+    if keep "$1"; then t=B; else t=C; fi
+  else
+    t=A
+  fi
+  mv -f "$S/$1" "$1" || return 1
+  echo "$t $z $1"
+}
+gone() {
+  if [ ! -e "$1" ] && [ ! -L "$1" ]; then echo "G 0 $1"; return 0; fi
+  if keep "$1"; then t=X; else t=D; fi
+  rm -f "$1" || return 1
+  echo "$t $z $1"
+}
+"#;
+
+/// Unpacks `archive_name` (already uploaded into `remote_dir`) into a hidden folder beside the
+/// files, then moves each file into place in one step (`mv` replaces a file whole), keeping the
+/// old copy first when there's a backup folder. Nothing half-written is ever in place.
+pub async fn unpack_swap(conn: &ssh::Connection, remote_dir: &str, archive_name: &str, plan: &SwapPlan<'_>) -> Result<Swapped, String> {
+    let id = new_id();
+    let stage = format!(".someprix-stage-{id}");
+    // "./" in front, so no name can be read as an option.
+    let rel = |path: &str| ssh::sh_quote(&format!("./{}", path.trim_start_matches('/')));
+    let (backup, limit) = plan.backup.unwrap_or(("", 0));
+    let mut script = format!("S={}\nB={}\nL={limit}\n{SWAP_FUNCTIONS}", ssh::sh_quote(&stage), ssh::sh_quote(backup));
+    for dir in plan.dirs {
+        script.push_str(&format!("dir {} || exit 1\n", rel(dir)));
+    }
+    for file in plan.files {
+        script.push_str(&format!("put {} || exit 1\n", rel(file)));
+    }
+    for file in plan.deletions {
+        script.push_str(&format!("gone {} || exit 1\n", rel(file)));
+    }
+    let script_name = format!(".someprix-swap-{id}.sh");
     let remote_archive = ssh::join(remote_dir, archive_name);
+    if let Err(error) = conn.upload(&ssh::join(remote_dir, &script_name), script.as_bytes(), |_| {}).await {
+        let _ = conn.remove(&remote_archive).await;
+        return Err(error);
+    }
+    let command = format!(
+        "cd {dir} || exit 1; mkdir -p {stage} && tar -x -z -o -f {archive} -C {stage}; c=$?; rm -f {archive}; \
+         if [ $c -eq 0 ]; then sh {script}; c=$?; fi; rm -rf {stage} {script}; exit $c",
+        dir = ssh::sh_quote(remote_dir),
+        stage = ssh::sh_quote(&stage),
+        archive = ssh::sh_quote(archive_name),
+        script = ssh::sh_quote(&script_name),
+    );
     let (code, output) = match conn.exec(&command, TAR_LIMIT).await {
         Ok(result) => result,
         Err(error) => {
@@ -141,12 +218,24 @@ pub async fn unpack_remote(conn: &ssh::Connection, remote_dir: &str, archive_nam
             return Err(error);
         }
     };
-    if code != 0 {
-        let _ = conn.remove(&remote_archive).await;
-        let detail = if output.is_empty() { format!("tar exit {code}") } else { output };
-        return Err(format!("Unpack failed: {detail}"));
+    let mut lines = Vec::new();
+    let mut other = Vec::new();
+    for line in output.lines() {
+        let mut parts = line.splitn(3, ' ');
+        let kind = parts.next().filter(|k| k.len() == 1).and_then(|k| k.chars().next());
+        let size = parts.next().and_then(|z| z.parse::<u64>().ok());
+        match (kind, size, parts.next()) {
+            (Some(kind @ ('A' | 'B' | 'C' | 'X' | 'D' | 'G' | 'M')), Some(size), Some(path)) if path.starts_with("./") => {
+                lines.push((kind, size, path[2..].to_string()));
+            }
+            _ => other.push(line),
+        }
     }
-    Ok(())
+    let failure = (code != 0).then(|| {
+        let detail = other.join(" ").trim().to_string();
+        format!("Unpack failed: {}", if detail.is_empty() { format!("exit {code}") } else { detail })
+    });
+    Ok(Swapped { lines, failure })
 }
 
 /// A progress report from fast mode.
@@ -170,15 +259,17 @@ fn unix_seconds(meta: &std::fs::Metadata) -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// Uploads `plan` into `remote_dir` as one archive the server unpacks. Returns false when
-/// cancelled, which leaves the server untouched: nothing is unpacked until the archive is whole.
+/// Uploads `plan` into `remote_dir` as one archive the server unpacks and puts in place (see
+/// [`unpack_swap`]), keeping old copies in `backup` if given. Returns None when cancelled, which
+/// leaves the server untouched: nothing is unpacked until the archive is whole.
 pub async fn upload(
     lanes: &[Arc<ssh::Connection>],
     plan: &files::UploadPlan,
     remote_dir: &str,
+    backup: Option<(&str, u64)>,
     cancelled: Cancelled<'_>,
     emit: Emit<'_>,
-) -> Result<bool, String> {
+) -> Result<Option<Swapped>, String> {
     let total = plan.files.len();
     let bytes_total: u64 = plan.files.iter().map(|f| f.size).sum();
     let step = |done: usize, path: Option<&str>, bytes_done: u64, stage: Option<&'static str>| {
@@ -205,7 +296,7 @@ pub async fn upload(
     let mut ends = Vec::with_capacity(total);
     for file in &plan.files {
         if cancelled() {
-            return Ok(false);
+            return Ok(None);
         }
         step(0, Some(&file.rel), 0, Some("packing"));
         let (path, rel) = (file.local.clone(), file.rel.clone());
@@ -228,7 +319,7 @@ pub async fn upload(
     }
     let archive_len = finish(archive).await?;
     if cancelled() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let archive_name = format!(".someprix-up-{}.tar.gz", new_id());
@@ -255,7 +346,7 @@ pub async fn upload(
         Ok(true) if !cancelled() => {}
         Ok(_) => {
             let _ = conn.remove(&remote_archive).await;
-            return Ok(false);
+            return Ok(None);
         }
         Err(error) => {
             let _ = conn.remove(&remote_archive).await;
@@ -264,8 +355,9 @@ pub async fn upload(
     }
 
     step(total, None, bytes_total, Some("unpacking"));
-    unpack_remote(conn, remote_dir, &archive_name).await?;
-    Ok(true)
+    let names: Vec<String> = plan.files.iter().map(|f| f.rel.clone()).collect();
+    let swap = SwapPlan { dirs: &plan.folders, files: &names, deletions: &[], backup };
+    unpack_swap(conn, remote_dir, &archive_name, &swap).await.map(Some)
 }
 
 /// The folder all `sources` sit in, and their names; None when they come from different folders.

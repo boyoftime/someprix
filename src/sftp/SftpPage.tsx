@@ -61,6 +61,8 @@ export function SftpPage() {
   const [active, setActive] = useState<Job | null>(null);
   const [progress, setProgress] = useState<PushProgress | null>(null);
   const [finished, setFinished] = useState<FinishedTransfer | null>(null);
+  // Undo of the upload that just finished is running.
+  const [undoing, setUndoing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const transfer = useTransferSpeed(active !== null, settling(progress));
   const jobId = useRef(0);
@@ -120,9 +122,10 @@ export function SftpPage() {
           if (report.folders) parts.push(plural(report.folders, "folder"));
           setFinished({
             tone: "done",
-            text: `${up ? "Uploaded" : "Downloaded"} ${parts.join(", ")} to ${job.dir}`,
+            text: `${up ? "Uploaded" : "Downloaded"} ${parts.join(", ")} to ${job.dir}${report.backedUp ? ` (${plural(report.backedUp, "replaced file")} backed up)` : ""}`,
             // A download into a folder that isn't showing on the left gets a way to find it.
             reveal: !up && job.dir !== localDirRef.current ? report.written[0] : undefined,
+            undo: up && report.history ? { id: report.history, hostId: job.hostId } : undefined,
           });
         }
       } catch (e) {
@@ -139,10 +142,40 @@ export function SftpPage() {
   }, [active, queue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!finished || active) return;
-    const timer = setTimeout(() => setFinished(null), finished.reveal ? OUTCOME_FOR * 2 : OUTCOME_FOR);
+    // An upload that can be undone keeps its Undo button a while longer; a question stays until answered.
+    if (!finished || active || undoing || finished.undoForce) return;
+    const timer = setTimeout(() => setFinished(null), finished.undo ? OUTCOME_FOR * 5 : finished.reveal ? OUTCOME_FOR * 2 : OUTCOME_FOR);
     return () => clearTimeout(timer);
-  }, [finished, active]);
+  }, [finished, active, undoing]);
+
+  // Undo of the upload that just finished: replaced files come back, added ones go.
+  const undoUpload = async (force: boolean) => {
+    const target = finished?.undo;
+    if (!target) return;
+    setUndoing(true);
+    try {
+      if (!connected.has(target.hostId) && !(await connect(target.hostId))) throw new Error("Not connected");
+      const report = await api.undoUpload(target.id, force);
+      if (!report.done) {
+        setFinished({
+          ...finished,
+          tone: "failed",
+          text: `${plural(report.changedSince.length, "file")} changed on the server since. Undo replaces those changes too.`,
+          undoForce: true,
+        });
+        return;
+      }
+      const parts = [];
+      if (report.restored) parts.push(`${plural(report.restored, "file")} put back`);
+      if (report.removed) parts.push(`${report.removed} removed`);
+      setFinished({ tone: "cancelled", text: `Upload undone${parts.length ? `: ${parts.join(", ")}` : ""}` });
+      recordPush([]);
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    } finally {
+      setUndoing(false);
+    }
+  };
 
   /** Cancel: the running transfer stops and undoes itself; anything waiting is dropped. */
   const cancel = () => {
@@ -210,6 +243,8 @@ export function SftpPage() {
               finished={finished}
               cancelling={cancelling}
               onCancel={cancel}
+              onUndo={(force) => void undoUpload(force)}
+              undoing={undoing}
             />
           )}
         />

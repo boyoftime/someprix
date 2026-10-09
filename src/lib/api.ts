@@ -46,6 +46,10 @@ export type ProjectInfo = {
   changes: Change[];
   /** Project paths (files or folders) excluded from pushing. */
   excluded: string[];
+  /** Pushes keep a backup on the server of what they replace or delete. */
+  backup: boolean;
+  /** This project's own choice; null follows the setting for all projects. */
+  backupChoice: boolean | null;
 };
 
 export type PushProgress = {
@@ -57,8 +61,8 @@ export type PushProgress = {
   bytesTotal?: number;
   /** Everything has arrived and is being moved into place; too late to cancel. */
   finishing?: boolean;
-  /** Fast mode's extra steps: packing the files here, unpacking them on the server. */
-  stage?: "packing" | "unpacking";
+  /** Extra steps: packing the files here, unpacking them on the server, putting them in place. */
+  stage?: "packing" | "unpacking" | "placing";
 };
 /** `fast`: the files went as one compressed archive. */
 /** One item in the Properties dialog; folders are counted through. */
@@ -81,7 +85,66 @@ export type ItemProps = {
   /** Some contents couldn't be read; totals may be low. */
   partial: boolean;
 };
-export type PushReport = { uploaded: number; deleted: number; fast?: boolean };
+export type PushReport = {
+  uploaded: number;
+  deleted: number;
+  fast?: boolean;
+  /** Stopped by Cancel before anything changed on the server. */
+  cancelled?: boolean;
+  /** Old copies kept in the backup, and ones replaced or deleted without one. */
+  backedUp?: number;
+  notBackedUp?: number;
+  /** The history entry Undo takes back; none when nothing changed. */
+  history?: string | null;
+};
+
+/** A server file's size and modified time (seconds). */
+export type ServerSig = { size: number; mtime: number };
+
+/** One push or SFTP upload, as it changed the server. */
+export type HistoryEntry = {
+  id: string;
+  /** Seconds since 1970. */
+  at: number;
+  hostId: string;
+  remoteDir: string;
+  /** Where the old copies are on the server; null when there's no backup. */
+  backupDir: string | null;
+  files: {
+    path: string;
+    action: "added" | "changed" | "deleted";
+    /** The old copy is in the backup. */
+    backedUp: boolean;
+    size: number;
+    after: ServerSig | null;
+  }[];
+  createdDirs: string[];
+};
+
+export type UndoReport = {
+  /** Files changed on the server since: nothing was undone yet. Ask, then undo with force. */
+  changedSince: string[];
+  done: boolean;
+  restored: number;
+  removed: number;
+  /** Files with no backup, left as they are. */
+  missed: number;
+};
+
+export type BackupMode = "all" | "chosen" | "off";
+
+export type Settings = {
+  backups: BackupMode;
+  backupSftp: boolean;
+  keepPushes: number;
+  keepDays: number;
+  maxBackupMb: number;
+  skipOverMb: number;
+  backupRoot: string;
+};
+
+/** A project folder Someprix knows, and its own backup choice (null: the setting for all). */
+export type ProjectChoice = { root: string; name: string; backup: boolean | null };
 
 /** A file a push would send (or delete) whose server copy changed since it was last pushed. */
 export type Conflict = {
@@ -108,6 +171,10 @@ export type UploadReport = {
   cancelled: boolean;
   /** Items a cancelled upload couldn't remove from the server. */
   leftovers: number;
+  /** The history entry Undo takes back (uploads that changed anything). */
+  history?: string | null;
+  /** Old copies of replaced files kept in the backup. */
+  backedUp?: number;
 };
 
 /** A text file opened in the editor. */
@@ -168,6 +235,29 @@ export const api = {
   /** Pushes every change, or with `only`, the changes at or under those project paths; `skip` stays behind. */
   push: (includeDeletions: boolean, only?: string[], fast = false, skip: string[] = []) =>
     call<PushReport>("project_push", { includeDeletions, only: only ?? null, fast, skip }),
+  /** Stops the running push; what it sent is removed again (too late once files are being placed). */
+  cancelPush: () => call<void>("project_push_cancel"),
+  /** The open project's pushes, newest first. */
+  pushHistory: () => call<HistoryEntry[]>("project_history"),
+  /** Undoes the latest push; without `force` it first reports files changed on the server since. */
+  undoPush: (id: string, force = false) => call<UndoReport>("project_undo", { id, force }),
+  /** Deletes the open project's backups on its server (the history stays). */
+  clearPushBackups: () => call<HistoryEntry[]>("project_backups_clear"),
+  sftpHistory: () => call<HistoryEntry[]>("sftp_history"),
+  undoUpload: (id: string, force = false) => call<UndoReport>("sftp_undo", { id, force }),
+  clearUploadBackups: (hostId: string) => call<HistoryEntry[]>("sftp_backups_clear", { hostId }),
+
+  settings: () => call<Settings>("settings_get"),
+  saveSettings: (settings: Settings) => call<void>("settings_set", { settings }),
+  backupProjects: () => call<ProjectChoice[]>("backup_projects"),
+  setProjectBackup: (root: string, backup: boolean | null) => call<void>("project_backup_set", { root, backup }),
+
+  /** Unsaved editor text kept on disk (each a JSON string the editor wrote). */
+  drafts: () => call<string[]>("drafts_list"),
+  putDraft: (key: string, body: string) => call<void>("draft_put", { key, body }),
+  dropDraft: (key: string) => call<void>("draft_drop", { key }),
+  clearDrafts: () => call<void>("drafts_clear"),
+
   /** The files a push would send that someone changed on the server since they were last pushed. */
   conflicts: (includeDeletions: boolean, only?: string[]) =>
     call<Conflict[]>("project_conflicts", { includeDeletions, only: only ?? null }),

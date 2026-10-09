@@ -1,3 +1,4 @@
+mod backup;
 mod commands;
 mod conflicts;
 mod edit;
@@ -50,6 +51,21 @@ pub fn run() {
             commands::project_set_target,
             commands::project_exclude,
             commands::project_push,
+            commands::project_push_cancel,
+            commands::project_history,
+            commands::project_undo,
+            commands::project_backups_clear,
+            commands::sftp_history,
+            commands::sftp_undo,
+            commands::sftp_backups_clear,
+            commands::settings_get,
+            commands::settings_set,
+            commands::backup_projects,
+            commands::project_backup_set,
+            commands::drafts_list,
+            commands::draft_put,
+            commands::draft_drop,
+            commands::drafts_clear,
             commands::project_conflicts,
             commands::project_take_server,
             commands::local_home,

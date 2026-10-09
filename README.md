@@ -33,6 +33,7 @@
 - **Lightweight.** The Windows installer is under 5 MB, and the app starts in a moment.
 - **Fast.** Transfers run over several connections at once. Fast mode (⚡) packs many files into one compressed archive and unpacks it on the server, so a slow upload line carries far less.
 - **All in one place.** Sync, file browser, terminal and code editor share the same saved servers. You log in once.
+- **Safe.** Every push can be undone, a cancelled one leaves nothing behind, and nothing half-written ever lands on your server.
 - **Modern.** A clean interface with dark and light themes, smooth progress bars, live transfer speed and keyboard shortcuts.
 - **Always up to date.** Someprix checks GitHub for new versions and updates itself in one click. Your servers, passwords and settings stay as they are.
 
@@ -47,7 +48,13 @@
 
 Open your project folder and Someprix watches it. Every file you save, add or delete is marked straight away: amber for changed, green for new, red for deleted. Pick your server and the folder to deploy to once, then press **Push to server** and only those files go up. You can also push a single file or folder from the right-click menu.
 
-Before pushing, Someprix checks whether anyone changed those files on the server since your last push. If they did, nothing is overwritten until you choose, file by file: **Overwrite**, **Skip** for now, **Get server version** (your local copy goes to the Recycle Bin, or the Trash on Mac and Linux), or **Compare** the two side by side first.
+Pushes are safe to stop and safe to take back:
+
+- **Never a half file.** Files go up under temporary names and are moved into place only once all of them have arrived. **Cancel** while it's sending, and the server stays exactly as it was.
+- **Undo.** Before a push replaces or deletes server files, Someprix keeps the old copies in a hidden backup folder on the server, outside your website. **Push history** (the clock next to Push) lists every push, and **Undo** puts the server back as it was. Backups take no extra space until a file is replaced, and the oldest go by themselves. Turn them off, or on for chosen projects only, in **Settings**.
+- **Nothing lost to a power cut.** What's been pushed is saved file by file as it goes.
+
+Before pushing, Someprix also checks whether anyone changed those files on the server since your last push. If they did, nothing is overwritten until you choose, file by file: **Overwrite**, **Skip** for now, **Get server version** (your local copy goes to the Recycle Bin, or the Trash on Mac and Linux), or **Compare** the two side by side first.
 
 ### SFTP: drag files both ways
 
@@ -56,7 +63,7 @@ Your computer on the left, the server on the right. Drag files across to upload 
 - Select many files at once: Ctrl/Shift-click, drag a box, or Ctrl+A. Start typing a name to jump to it.
 - Download to your Downloads folder, create files and folders, delete, copy paths.
 - **Properties** shows total size, file and folder counts, dates, and server permissions and owner.
-- Cancelling a transfer removes what it had already sent.
+- Cancelling a transfer removes what it had already sent, and an upload that replaced files can be undone right after.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/sftp-dark.png" />
@@ -79,6 +86,7 @@ Double-click a text file, on your computer or on the server, and it opens in the
 - **Ctrl+S** saves the file back where it came from, including straight to the server.
 - A white dot on the tab means unsaved changes.
 - If someone else changed the file in the meantime, Someprix asks before overwriting it.
+- Unsaved text is kept as a draft, so it comes back after a crash or a power cut.
 - Closing a tab or the app with unsaved work asks first.
 
 <picture>

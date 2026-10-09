@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Ban, ChevronDown, Copy, FolderOpen, FolderSearch, Laptop, Upload } from "lucide-react";
+import { Ban, ChevronDown, Copy, FolderOpen, FolderSearch, History, Laptop, Upload } from "lucide-react";
 import { errorMessage, useAppData } from "../state/AppData";
 import { useContextMenu } from "../ui/ContextMenu";
 import { FastToggle } from "../ui/FastToggle";
@@ -21,6 +21,8 @@ type LocalPaneProps = {
   /** Fast mode: changes go as one compressed archive the server unpacks. */
   fast: boolean;
   onFastChange: (on: boolean) => void;
+  /** Opens the push history (with Undo). */
+  onShowHistory: () => void;
 };
 
 async function pickFolder() {
@@ -82,7 +84,7 @@ function WatchStatus({ changes, scanning }: { changes: Change[]; scanning: boole
   );
 }
 
-export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange }: LocalPaneProps) {
+export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange, onShowHistory }: LocalPaneProps) {
   const { project, projectLoading, openProject, notify, excludeFromPush } = useAppData();
   // The list of excluded paths, while it's open.
   const [showExcluded, setShowExcluded] = useState(false);
@@ -186,6 +188,9 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
           </button>
         )}
         <span className="spacer" />
+        <button type="button" className="icon-btn" onClick={onShowHistory} aria-label="Push history" data-tip="Push history and undo">
+          <History size={17} strokeWidth={1.75} />
+        </button>
         <FastToggle on={fast} onChange={onFastChange} />
         <span className="tip-wrap" data-tip={changes.length > 0 ? (pushBlocker ?? undefined) : "No changes"}>
           <button

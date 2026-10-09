@@ -19,6 +19,8 @@ import { EditorPage } from "./editor/EditorPage";
 import { TerminalProvider } from "./terminal/TerminalProvider";
 import { TerminalPage } from "./terminal/TerminalPage";
 import { UpdateProvider } from "./update/UpdateProvider";
+import { SettingsPage } from "./settings/SettingsPage";
+import type { ThemePref } from "./theme";
 import { remember, remembered } from "./lib/storage";
 
 /** Whether the sidebar is folded to icons, kept between launches. */
@@ -27,7 +29,7 @@ const SIDEBAR = "someprix.sidebar";
 type Overlay = "editor" | "terminal";
 type BasePage = Exclude<Page, Overlay>;
 
-function Workspace() {
+function Workspace({ theme, onThemeChange }: { theme: ThemePref; onThemeChange: (pref: ThemePref) => void }) {
   const { project } = useAppData();
   // The editor and terminal show over the current page, which stays mounted meanwhile so
   // transfers and folders carry on where they were.
@@ -66,6 +68,8 @@ function Workspace() {
                   <SyncPage requestedHostId={requestedHostId} onRequestHandled={() => setRequestedHostId(null)} />
                 ) : page === "sftp" ? (
                   <SftpPage />
+                ) : page === "settings" ? (
+                  <SettingsPage theme={theme} onThemeChange={onThemeChange} />
                 ) : (
                   <HostsPage
                     onOpenInSync={(host) => {
@@ -88,7 +92,7 @@ function Workspace() {
 }
 
 export default function App() {
-  const { resolved, setPref } = useTheme();
+  const { pref, resolved, setPref } = useTheme();
   const frameRef = useRef<HTMLDivElement>(null);
   const windowFx = useWindowFx(frameRef);
 
@@ -105,7 +109,7 @@ export default function App() {
             onToggleMaximize={windowFx.toggleMaximize}
             onClose={windowFx.close}
           />
-          <Workspace />
+          <Workspace theme={pref} onThemeChange={setPref} />
           <Tooltips />
         </ContextMenuProvider>
       </div>
