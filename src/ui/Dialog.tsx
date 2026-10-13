@@ -25,7 +25,8 @@ export function Dialog({ title, onClose, children, footer, locked = false, width
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !locked) onClose();
+      // Only the one showing: a page waiting in the background keeps its dialog.
+      if (event.key === "Escape" && !locked && panel.current?.getClientRects().length) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

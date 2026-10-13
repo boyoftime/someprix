@@ -1,7 +1,17 @@
 import { useCallback, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 
 /** Neither pane gets narrower than this while dragging. */
-const MIN_PANE = 280;
+export const MIN_PANE = 280;
+
+/** The width a row of items needs on one line: each item (bar the stretchy spacer), the gaps
+ *  between them, and the padding. Items must not shrink for this to be their real size. */
+export function rowWidth(row: HTMLElement) {
+  const style = getComputedStyle(row);
+  const gap = parseFloat(style.columnGap) || 0;
+  const items = [...row.children] as HTMLElement[];
+  const widths = items.filter((item) => !item.classList.contains("spacer")).reduce((sum, item) => sum + item.getBoundingClientRect().width, 0);
+  return Math.ceil(widths + gap * Math.max(0, items.length - 1) + (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0));
+}
 
 function savedSplit(key: string) {
   try {
@@ -32,15 +42,20 @@ type SplitterProps = {
   container: RefObject<HTMLElement | null>;
   split: number;
   onChange: (split: number) => void;
+  /** The left pane needs at least this many pixels (its footer, say); the divider stops there. */
+  minLeft?: number;
 };
 
-export function Splitter({ container, split, onChange }: SplitterProps) {
+export function Splitter({ container, split, onChange, minLeft = 0 }: SplitterProps) {
   const [dragging, setDragging] = useState(false);
 
   const clamp = (value: number) => {
     const width = container.current?.getBoundingClientRect().width ?? 0;
-    const min = width > MIN_PANE * 2 ? MIN_PANE / width : 0.5;
-    return Math.min(1 - min, Math.max(min, value));
+    if (!width) return value;
+    const right = Math.min(MIN_PANE, width / 2);
+    // The right pane keeps its minimum even when the left would like more.
+    const left = Math.min(Math.max(MIN_PANE, minLeft), width - right);
+    return Math.min(1 - right / width, Math.max(left / width, value));
   };
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -93,7 +108,7 @@ export function Splitter({ container, split, onChange }: SplitterProps) {
       data-tip="Resize (double-click: reset)"
       data-dragging={dragging ? "" : undefined}
       onPointerDown={onPointerDown}
-      onDoubleClick={() => onChange(0.5)}
+      onDoubleClick={() => onChange(clamp(0.5))}
       onKeyDown={onKeyDown}
     />
   );

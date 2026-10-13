@@ -22,6 +22,7 @@ import { UpdateProvider } from "./update/UpdateProvider";
 import { SettingsPage } from "./settings/SettingsPage";
 import type { ThemePref } from "./theme";
 import { remember, remembered } from "./lib/storage";
+import { BusyGuard } from "./window/BusyGuard";
 
 /** Whether the sidebar is folded to icons, kept between launches. */
 const SIDEBAR = "someprix.sidebar";
@@ -41,14 +42,19 @@ function Workspace({ theme, onThemeChange }: { theme: ThemePref; onThemeChange: 
     setCollapsed(!collapsed);
     remember(SIDEBAR, collapsed ? "open" : "collapsed");
   };
+  // Pages open the first time they're visited, then stay open behind the others, so a push or a
+  // transfer (and its progress, the folders, the selection) is still there when you come back.
+  const [visited, setVisited] = useState<Set<BasePage>>(() => new Set(["sync"]));
   const navigate = (next: Page) => {
     if (next === "editor" || next === "terminal") {
       setOverlay(next);
     } else {
       setOverlay(null);
       setPage(next);
+      setVisited((now) => (now.has(next) ? now : new Set(now).add(next)));
     }
   };
+  const showing = (which: BasePage) => page === which && overlay === null;
 
   return (
     <EditorProvider onShow={() => setOverlay("editor")}>
@@ -64,20 +70,32 @@ function Workspace({ theme, onThemeChange }: { theme: ThemePref; onThemeChange: 
             />
             <main className="canvas">
               <div className="page-host" inert={overlay !== null}>
-                {page === "sync" ? (
-                  <SyncPage requestedHostId={requestedHostId} onRequestHandled={() => setRequestedHostId(null)} />
-                ) : page === "sftp" ? (
-                  <SftpPage />
-                ) : page === "settings" ? (
-                  <SettingsPage theme={theme} onThemeChange={onThemeChange} />
-                ) : (
-                  <HostsPage
-                    onOpenInSync={(host) => {
-                      setRequestedHostId(host.id);
-                      navigate("sync");
-                    }}
-                  />
+                {visited.has("sync") && (
+                  <div className="page-slot" hidden={page !== "sync"}>
+                    <SyncPage
+                      requestedHostId={requestedHostId}
+                      onRequestHandled={() => setRequestedHostId(null)}
+                      onShow={() => navigate("sync")}
+                    />
+                  </div>
                 )}
+                {visited.has("sftp") && (
+                  <div className="page-slot" hidden={page !== "sftp"}>
+                    <SftpPage shown={showing("sftp")} />
+                  </div>
+                )}
+                {visited.has("hosts") && (
+                  <div className="page-slot" hidden={page !== "hosts"}>
+                    <HostsPage
+                      onOpenInSync={(host) => {
+                        setRequestedHostId(host.id);
+                        navigate("sync");
+                      }}
+                    />
+                  </div>
+                )}
+                {/* Settings reads everything fresh each time it opens. */}
+                {page === "settings" && <SettingsPage theme={theme} onThemeChange={onThemeChange} />}
               </div>
               <TerminalPage shown={overlay === "terminal"} />
               <EditorPage shown={overlay === "editor"} />
@@ -110,6 +128,7 @@ export default function App() {
             onClose={windowFx.close}
           />
           <Workspace theme={pref} onThemeChange={setPref} />
+          <BusyGuard />
           <Tooltips />
         </ContextMenuProvider>
       </div>

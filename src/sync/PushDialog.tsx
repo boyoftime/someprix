@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Gauge, TriangleAlert, Zap } from "lucide-react";
 import { Dialog } from "../ui/Dialog";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
@@ -7,6 +7,7 @@ import { api, joinRemote, localPath, type Change, type Conflict, type Host, type
 import { formatAgo, formatSize, formatSpeed, formatTimeLeft } from "../lib/format";
 import { errorMessage, useAppData } from "../state/AppData";
 import { CompareDialog, type Choice } from "./CompareDialog";
+import { setActivity } from "../state/activity";
 
 type PushDialogProps = {
   host: Host;
@@ -181,6 +182,16 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const timeLeft = speed && speed > 0 ? (bytesTotal - bytesDone) / speed : null;
   // The bar fills smoothly at the current speed between confirmations (see useSmoothFill).
   const smooth = useSmoothFill(fraction, speed && bytesTotal ? speed / bytesTotal : 0, pushing, done);
+
+  // The sidebar shows a running push while another page is open.
+  useEffect(() => {
+    if (phase === "checking") setActivity("sync", { label: "Checking the server before pushing", percent: null });
+    else if (phase === "taking") setActivity("sync", { label: "Getting server versions", percent: null });
+    else if (phase === "pushing")
+      setActivity("sync", { label: cancelling ? "Cancelling a push" : `Pushing ${plural(order.length, "file")}`, percent: percent });
+    else setActivity("sync", null);
+  }, [phase, percent, cancelling, order.length]);
+  useEffect(() => () => setActivity("sync", null), []);
 
   // The conflicts step: every file needs a choice before going on.
   const undecided = conflicts.filter((c) => !choices[c.path]).length;

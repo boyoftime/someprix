@@ -6,7 +6,8 @@ import { HostDialog } from "../hosts/HostDialog";
 import { ServerPane } from "../sync/ServerPane";
 import { Splitter, useSplit } from "../sync/Splitter";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
-import { loadFast, saveFast } from "../ui/FastToggle";
+import { useFast } from "../ui/FastToggle";
+import { setActivity } from "../state/activity";
 import { remember, remembered } from "../lib/storage";
 import type { MenuItem } from "../ui/ContextMenu";
 import { DragProvider, type DragKind } from "./drag";
@@ -24,9 +25,13 @@ type Job = { id: number; kind: DragKind; hostId: string; sources: string[]; dir:
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** Move files between this computer and a server: browse both sides, drag across either way. */
-export function SftpPage() {
+/** Move files between this computer and a server: browse both sides, drag across either way.
+ *  It stays open while another page shows (`shown` false), so transfers carry on and their
+ *  progress is still here when you come back. */
+export function SftpPage({ shown }: { shown: boolean }) {
   const { hosts, connected, reconnecting, connect, notify, recordPush } = useAppData();
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
   const [chosenHost, setChosenHost] = useState<string | null>(() => remembered(LAST_HOST));
   const [addingHost, setAddingHost] = useState(false);
   const [remoteDir, setRemoteDir] = useState<string | null>(null);
@@ -67,11 +72,7 @@ export function SftpPage() {
   const transfer = useTransferSpeed(active !== null, settling(progress));
   const jobId = useRef(0);
   // Fast mode: transfers go as one compressed archive the other end unpacks.
-  const [fast, setFast] = useState(() => loadFast(FAST_SFTP));
-  const changeFast = (on: boolean) => {
-    setFast(on);
-    saveFast(FAST_SFTP, on);
-  };
+  const [fast, changeFast] = useFast(FAST_SFTP);
 
   const enqueue = useCallback(
     (kind: DragKind, sources: string[], dir: string) => {
@@ -127,6 +128,15 @@ export function SftpPage() {
             reveal: !up && job.dir !== localDirRef.current ? report.written[0] : undefined,
             undo: up && report.history ? { id: report.history, hostId: job.hostId } : undefined,
           });
+          // Finished while another page shows: say so there.
+          if (!shownRef.current) {
+            const target = up && report.history ? { id: report.history, hostId: job.hostId } : null;
+            notify(
+              `${up ? "Uploaded" : "Downloaded"} ${parts.join(", ")} to ${job.dir}`,
+              "info",
+              target ? { label: "Undo", run: () => void undoRef.current(target, false) } : undefined,
+            );
+          }
         }
       } catch (e) {
         // Some files may have made it before the undo: refresh the listing anyway.
@@ -149,26 +159,23 @@ export function SftpPage() {
   }, [finished, active, undoing]);
 
   // Undo of the upload that just finished: replaced files come back, added ones go.
-  const undoUpload = async (force: boolean) => {
-    const target = finished?.undo;
-    if (!target) return;
+  const undoUpload = async (target: { id: string; hostId: string }, force: boolean) => {
     setUndoing(true);
     try {
       if (!connected.has(target.hostId) && !(await connect(target.hostId))) throw new Error("Not connected");
       const report = await api.undoUpload(target.id, force);
       if (!report.done) {
-        setFinished({
-          ...finished,
-          tone: "failed",
-          text: `${plural(report.changedSince.length, "file")} changed on the server since. Undo replaces those changes too.`,
-          undoForce: true,
-        });
+        const text = `${plural(report.changedSince.length, "file")} changed on the server since. Undo replaces those changes too.`;
+        setFinished({ tone: "failed", text, undo: target, undoForce: true });
+        if (!shownRef.current) notify(text, "error", { label: "Undo anyway", run: () => void undoRef.current(target, true) });
         return;
       }
       const parts = [];
       if (report.restored) parts.push(`${plural(report.restored, "file")} put back`);
       if (report.removed) parts.push(`${report.removed} removed`);
-      setFinished({ tone: "cancelled", text: `Upload undone${parts.length ? `: ${parts.join(", ")}` : ""}` });
+      const text = `Upload undone${parts.length ? `: ${parts.join(", ")}` : ""}`;
+      setFinished({ tone: "cancelled", text });
+      if (!shownRef.current) notify(text);
       recordPush([]);
     } catch (e) {
       notify(errorMessage(e), "error");
@@ -176,6 +183,31 @@ export function SftpPage() {
       setUndoing(false);
     }
   };
+  // Toasts call the latest version (they outlive the render that made them).
+  const undoRef = useRef(undoUpload);
+  undoRef.current = undoUpload;
+
+  // The sidebar shows a running transfer while another page is open.
+  useEffect(() => {
+    if (!active) {
+      setActivity("sftp", null);
+      return;
+    }
+    const up = active.kind === "upload";
+    const bytesTotal = progress?.bytesTotal ?? 0;
+    const percent = bytesTotal
+      ? ((progress?.bytesDone ?? 0) / bytesTotal) * 100
+      : progress?.total
+        ? (progress.done / progress.total) * 100
+        : null;
+    const files = progress?.total ? ` ${plural(progress.total, "file")}` : "";
+    const waiting = queue.length ? `, ${queue.length} more waiting` : "";
+    setActivity("sftp", {
+      label: `${cancelling ? "Cancelling" : up ? "Uploading" : "Downloading"}${files}${waiting}`,
+      percent: percent === null ? null : Math.min(99, percent),
+    });
+  }, [active, progress, queue.length, cancelling]);
+  useEffect(() => () => setActivity("sftp", null), []);
 
   /** Cancel: the running transfer stops and undoes itself; anything waiting is dropped. */
   const cancel = () => {
@@ -243,7 +275,7 @@ export function SftpPage() {
               finished={finished}
               cancelling={cancelling}
               onCancel={cancel}
-              onUndo={(force) => void undoUpload(force)}
+              onUndo={(force) => finished?.undo && void undoUpload(finished.undo, force)}
               undoing={undoing}
             />
           )}

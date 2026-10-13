@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -9,6 +9,7 @@ import { FastToggle } from "../ui/FastToggle";
 import { Logo } from "../components/Logo";
 import { LocalTree } from "./LocalTree";
 import { ExcludedDialog } from "./ExcludedDialog";
+import { rowWidth } from "./Splitter";
 import type { Change } from "../lib/api";
 import { fileManager } from "../lib/platform";
 
@@ -23,6 +24,8 @@ type LocalPaneProps = {
   onFastChange: (on: boolean) => void;
   /** Opens the push history (with Undo). */
   onShowHistory: () => void;
+  /** Told the width the footer needs on one line, so the divider never squeezes it. */
+  onFootWidth: (width: number) => void;
 };
 
 async function pickFolder() {
@@ -41,9 +44,12 @@ function ChangeSummary({ changes }: { changes: Change[] }) {
   return (
     <span className="change-summary">
       {parts.map((p) => (
-        <span key={p.kind} className="change-count">
+        <span key={p.kind} className="change-count" data-tip={`${p.n} ${p.label}`}>
           <span className={`change-dot ${p.kind}`} aria-hidden="true" />
-          {p.n} {p.label}
+          <span className="foot-long">
+            {p.n} {p.label}
+          </span>
+          <span className="foot-short">{p.n}</span>
         </span>
       ))}
     </span>
@@ -84,12 +90,41 @@ function WatchStatus({ changes, scanning }: { changes: Change[]; scanning: boole
   );
 }
 
-export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange, onShowHistory }: LocalPaneProps) {
+export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange, onShowHistory, onFootWidth }: LocalPaneProps) {
   const { project, projectLoading, openProject, notify, excludeFromPush } = useAppData();
   // The list of excluded paths, while it's open.
   const [showExcluded, setShowExcluded] = useState(false);
   const openMenu = useContextMenu();
   const attempt = (action: Promise<unknown>) => void action.catch((e) => notify(errorMessage(e), "error"));
+
+  // The footer stays on one line: the divider stops where it would no longer fit, and if the
+  // whole window is too narrow even so, it goes compact ("Push", counts without words).
+  const foot = useRef<HTMLElement>(null);
+  const [compact, setCompact] = useState(false);
+  const fullWidth = useRef(0);
+  const footWidthSink = useRef(onFootWidth);
+  footWidthSink.current = onFootWidth;
+  useLayoutEffect(() => {
+    const row = foot.current;
+    const pane = row?.closest<HTMLElement>(".pane");
+    if (!row || !pane) return;
+    const update = () => {
+      if (!row.hasAttribute("data-compact")) {
+        fullWidth.current = rowWidth(row);
+        footWidthSink.current(fullWidth.current);
+      }
+      setCompact(pane.clientWidth < fullWidth.current);
+    };
+    update();
+    const resized = new ResizeObserver(update);
+    resized.observe(pane);
+    const changed = new MutationObserver(update);
+    changed.observe(row, { childList: true, subtree: true, characterData: true });
+    return () => {
+      resized.disconnect();
+      changed.disconnect();
+    };
+  }, [project?.root]);
 
   async function choose() {
     const folder = await pickFolder();
@@ -152,9 +187,9 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
           <Laptop size={16} strokeWidth={1.75} />
           Local
         </span>
-        <button type="button" className="chip" onClick={choose} data-tip="Change project">
+        <button type="button" className="chip project-chip" onClick={choose} data-tip={`Change project (${project.name})`}>
           <FolderOpen size={15} strokeWidth={1.75} />
-          {project.name}
+          <span className="chip-label">{project.name}</span>
           <ChevronDown size={14} strokeWidth={2} />
         </button>
       </header>
@@ -174,7 +209,7 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
         onExclude={(paths, exclude) => void excludeFromPush(paths, exclude)}
       />
 
-      <footer className="pane-foot">
+      <footer className="pane-foot local-foot" ref={foot} data-compact={compact ? "" : undefined}>
         <ChangeSummary changes={changes} />
         {project.excluded.length > 0 && (
           <button
@@ -184,7 +219,8 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
             data-tip="Left out of pushing"
           >
             <Ban size={13} strokeWidth={2} />
-            {project.excluded.length} excluded
+            <span className="foot-long">{project.excluded.length} excluded</span>
+            <span className="foot-short">{project.excluded.length}</span>
           </button>
         )}
         <span className="spacer" />
@@ -200,7 +236,8 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
             disabled={changes.length === 0 || pushBlocker !== null}
           >
             <Upload size={16} strokeWidth={1.75} />
-            Push to server
+            <span className="foot-long">Push to server</span>
+            <span className="foot-short">Push</span>
           </button>
         </span>
       </footer>

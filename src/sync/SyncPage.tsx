@@ -3,7 +3,7 @@ import { Check, Target } from "lucide-react";
 import { useAppData } from "../state/AppData";
 import type { MenuItem } from "../ui/ContextMenu";
 import { HostDialog } from "../hosts/HostDialog";
-import { loadFast, saveFast } from "../ui/FastToggle";
+import { useFast } from "../ui/FastToggle";
 import { LocalPane } from "./LocalPane";
 import { ServerPane } from "./ServerPane";
 import { PushDialog } from "./PushDialog";
@@ -20,9 +20,11 @@ type SyncPageProps = {
   /** A host picked on the Hosts page, to show (and connect) here. */
   requestedHostId: string | null;
   onRequestHandled: () => void;
+  /** Brings this page forward (Undo from a toast while another page shows). */
+  onShow: () => void;
 };
 
-export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
+export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPageProps) {
   const { project, hosts, connected, connectionsKnown, connecting, reconnecting, connect, setTarget } = useAppData();
   // The server shown when there's no project to remember it.
   const [looseHostId, setLooseHostId] = useState<string | null>(null);
@@ -33,12 +35,10 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
   const [history, setHistory] = useState<{ undoId?: string } | null>(null);
   const panes = useRef<HTMLDivElement>(null);
   const [split, setSplit] = useSplit();
+  // What the local pane's footer needs (counts, history, fast mode, Push): the divider stops there.
+  const [footWidth, setFootWidth] = useState(0);
   // Fast mode: push changes as one compressed archive that the server unpacks.
-  const [fast, setFast] = useState(() => loadFast(FAST_PUSH));
-  const changeFast = (on: boolean) => {
-    setFast(on);
-    saveFast(FAST_PUSH, on);
-  };
+  const [fast, changeFast] = useFast(FAST_PUSH);
 
   const hostId = project?.hostId ?? looseHostId ?? (hosts.length === 1 ? hosts[0].id : null);
   const host = hosts.find((h) => h.id === hostId) ?? null;
@@ -110,7 +110,7 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
         : null;
 
   return (
-    <div className="sync" ref={panes} style={{ "--split": `${split * 100}%` } as CSSProperties}>
+    <div className="sync" ref={panes} style={{ "--split": `${split * 100}%`, "--left-min": `${footWidth}px` } as CSSProperties}>
       <LocalPane
         pushBlocker={pushBlocker}
         onPush={() => setPushScope("all")}
@@ -118,8 +118,9 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
         fast={fast}
         onFastChange={changeFast}
         onShowHistory={() => setHistory({})}
+        onFootWidth={setFootWidth}
       />
-      <Splitter container={panes} split={split} onChange={setSplit} />
+      <Splitter container={panes} split={split} onChange={setSplit} minLeft={footWidth} />
       <ServerPane
         hostId={hostId}
         fastDelete={fast}
@@ -149,7 +150,10 @@ export function SyncPage({ requestedHostId, onRequestHandled }: SyncPageProps) {
           only={pushScope === "all" ? undefined : pushScope}
           fast={fast}
           onClose={() => setPushScope(null)}
-          onUndo={(undoId) => setHistory({ undoId })}
+          onUndo={(undoId) => {
+            onShow();
+            setHistory({ undoId });
+          }}
         />
       )}
       {history && project && <HistoryDialog undoId={history.undoId} onClose={() => setHistory(null)} />}

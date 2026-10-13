@@ -14,6 +14,30 @@ import { version } from "../../package.json";
 import { useEditor } from "../editor/EditorProvider";
 import { useUpdates } from "../update/UpdateProvider";
 import { useSpin } from "../ui/useSpin";
+import { useActivity, type Activity } from "../state/activity";
+
+/** A push or transfer still running on that page: a ring that fills (or spins until there's a
+ *  measure), with what it's doing on hover. */
+function ActivityRing({ activity }: { activity: Activity }) {
+  const R = 7;
+  const around = 2 * Math.PI * R;
+  const label = activity.percent === null ? activity.label : `${activity.label}, ${activity.percent}%`;
+  return (
+    <span className="nav-activity" data-tip={label} aria-label={label} role="status" data-spinning={activity.percent === null ? "" : undefined}>
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+        <circle cx="9" cy="9" r={R} className="nav-activity-track" />
+        <circle
+          cx="9"
+          cy="9"
+          r={R}
+          className="nav-activity-fill"
+          strokeDasharray={around}
+          strokeDashoffset={around * (1 - (activity.percent ?? 25) / 100)}
+        />
+      </svg>
+    </span>
+  );
+}
 
 export type Page = "sync" | "sftp" | "hosts" | "terminal" | "editor" | "settings";
 
@@ -39,6 +63,7 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
   const unsaved = useEditor().tabs.filter((tab) => tab.dirty).length;
   const updates = useUpdates();
   const checkSpin = useSpin(updates.checking);
+  const busy = useActivity();
   return (
     <nav className="sidebar" aria-label="Main">
       {ITEMS.map(({ page: target, label, Icon }) => (
@@ -53,7 +78,8 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
         >
           <Icon size={18} strokeWidth={1.75} />
           <span className="nav-label">{label}</span>
-          {target === "sync" && pending > 0 && (
+          {(target === "sync" || target === "sftp") && busy[target] && <ActivityRing activity={busy[target]} />}
+          {target === "sync" && pending > 0 && !busy.sync && (
             <span className="nav-badge" aria-label={`${pending} changes to push`}>
               {pending}
             </span>
