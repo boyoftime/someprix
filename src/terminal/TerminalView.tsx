@@ -14,6 +14,8 @@ import { useContextMenu } from "../ui/ContextMenu";
 import { useTerminals, type Session } from "./TerminalProvider";
 import { TypeAhead } from "./typeahead";
 import { isMac } from "../lib/platform";
+import { MOTD } from "../settings/SettingsPage";
+import { remembered } from "../lib/storage";
 
 /** ANSI colours for each app theme; background, text and cursor come from the app's tokens. */
 const PALETTES: Record<"dark" | "light", ITheme> = {
@@ -248,7 +250,8 @@ export function TerminalView({ session, active, shown }: TerminalViewProps) {
         };
         try {
           fitNow();
-          const id = await api.openTerminal(hostId, xterm.cols, xterm.rows, output, dir);
+          // The server's login message: on a fresh terminal only, never on a reconnect.
+          const id = await api.openTerminal(hostId, xterm.cols, xterm.rows, output, dir, dir === null && remembered(MOTD) === "on");
           if (disposed || token !== generation) {
             void api.closeTerminal(id);
             return "ended";

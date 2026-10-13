@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArchiveRestore, Download, FileCode, Monitor, Moon, Palette, RefreshCw, Search, Sun, Zap, type LucideIcon } from "lucide-react";
+import { ArchiveRestore, Download, FileCode, Monitor, Moon, Palette, RefreshCw, Search, SquareTerminal, Sun, Zap, type LucideIcon } from "lucide-react";
 import { version } from "../../package.json";
 import { api, type BackupMode, type ProjectChoice, type Settings } from "../lib/api";
 import { remember, remembered } from "../lib/storage";
@@ -14,6 +14,8 @@ import { useSpin } from "../ui/useSpin";
 /** Settings kept in this window (the rest live with the app's data). */
 export const DRAFTS = "someprix.editor.drafts";
 export const AUTO_UPDATES = "someprix.updates.auto";
+/** Show the server's login message in a new terminal (off unless switched on). */
+export const MOTD = "someprix.terminal.motd";
 const FAST_PUSH = "someprix.push.fast";
 const FAST_SFTP = "someprix.sftp.fast";
 
@@ -118,6 +120,7 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
   const [local, setLocal] = useState(() => ({
     drafts: isOn(DRAFTS),
     updates: isOn(AUTO_UPDATES),
+    motd: remembered(MOTD) === "on",
     fastPush: loadFast(FAST_PUSH),
     fastSftp: loadFast(FAST_SFTP),
   }));
@@ -158,6 +161,7 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
       if (!on) void api.clearDrafts();
     }
     if (name === "updates") remember(AUTO_UPDATES, on ? "on" : "off");
+    if (name === "motd") remember(MOTD, on ? "on" : "off");
     if (name === "fastPush") saveFast(FAST_PUSH, on);
     if (name === "fastSftp") saveFast(FAST_SFTP, on);
   };
@@ -290,6 +294,15 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
         <Card icon={Zap} tone="amber" title="Transfers" about="Fast mode sends many files as one compressed archive. It needs tar on the server.">
           <Switch on={local.fastPush} onChange={(value) => setLocalSwitch("fastPush", value)} label="Fast mode for pushes" />
           <Switch on={local.fastSftp} onChange={(value) => setLocalSwitch("fastSftp", value)} label="Fast mode for SFTP uploads and downloads" />
+        </Card>
+
+        <Card icon={SquareTerminal} tone="rose" title="SSH Terminal" about="The shell on your server.">
+          <Switch
+            on={local.motd}
+            onChange={(value) => setLocalSwitch("motd", value)}
+            label="Show the server's welcome message"
+            hint="What the server says at login: system load, disk and memory use, updates waiting, notices from your host."
+          />
         </Card>
 
         <Card icon={FileCode} tone="blue" title="Editor" about="Files you open from your computer or the server.">

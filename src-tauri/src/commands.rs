@@ -196,6 +196,7 @@ pub async fn ssh_create_file(state: State<'_, AppState>, host_id: String, path: 
 /// Opens a shell on a connected host in a pseudo-terminal of `cols` x `rows`, in `start_dir` if
 /// given (a reconnect carrying on where it was), else home. Its output streams
 /// to `output` as raw bytes, then one last JSON message says how it ended. Returns its id.
+/// With `motd`, the server's login message (system info, notices) comes first.
 #[tauri::command]
 pub async fn terminal_open(
     state: State<'_, AppState>,
@@ -203,9 +204,22 @@ pub async fn terminal_open(
     cols: u32,
     rows: u32,
     start_dir: Option<String>,
+    motd: Option<bool>,
     output: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<u32, String> {
     let conn = state.ssh.get(&host_id).await?;
+    // A server shows its login message once per connection, and the file browser's channel,
+    // opened first, usually takes it: read it out here instead (Ubuntu's dynamic part, then the
+    // usual message files).
+    if motd.unwrap_or(false) {
+        let read = "cat '/run/motd.dynamic' '/etc/motd' '/run/motd.d'/* '/etc/motd.d'/* 2>/dev/null";
+        if let Ok((_, text)) = conn.exec(read, std::time::Duration::from_secs(10)).await {
+            if !text.trim().is_empty() {
+                let shown = format!("{}\r\n\r\n", text.replace("\r\n", "\n").replace('\n', "\r\n"));
+                let _ = output.send(tauri::ipc::InvokeResponseBody::Raw(shown.into_bytes()));
+            }
+        }
+    }
     let channel = conn.open_shell(cols, rows, start_dir.as_deref()).await?;
     Ok(state.terminals.start(channel, output))
 }

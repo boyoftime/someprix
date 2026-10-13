@@ -287,14 +287,16 @@ export const api = {
   onTransferProgress: (handler: (progress: PushProgress) => void): Promise<UnlistenFn> =>
     listen<PushProgress>("sftp://transfer-progress", (event) => handler(event.payload)),
 
-  /** Opens a shell on a connected host, in `startDir` if given. `output` gets raw bytes, then one TerminalEnded. */
+  /** Opens a shell on a connected host, in `startDir` if given. `output` gets raw bytes, then one
+   *  TerminalEnded. With `motd`, the server's login message comes first. */
   openTerminal: (
     hostId: string,
     cols: number,
     rows: number,
     output: Channel<ArrayBuffer | TerminalEnded>,
     startDir: string | null = null,
-  ) => call<number>("terminal_open", { hostId, cols, rows, output, startDir }),
+    motd = false,
+  ) => call<number>("terminal_open", { hostId, cols, rows, output, startDir, motd }),
   writeTerminal: (id: number, data: number[]) => call<void>("terminal_write", { id, data }),
   resizeTerminal: (id: number, cols: number, rows: number) => call<void>("terminal_resize", { id, cols, rows }),
   closeTerminal: (id: number) => call<void>("terminal_close", { id }),
