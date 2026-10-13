@@ -59,10 +59,11 @@ pub struct ProjectLink {
 #[serde(rename_all = "lowercase")]
 pub enum BackupMode {
     /// Every project, unless switched off for one.
-    #[default]
     All,
     /// Only projects switched on.
     Chosen,
+    /// No backups (the start).
+    #[default]
     Off,
 }
 
@@ -87,7 +88,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            backups: BackupMode::All,
+            backups: BackupMode::Off,
             backup_sftp: true,
             keep_pushes: 10,
             keep_days: 14,

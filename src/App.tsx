@@ -110,7 +110,7 @@ function Workspace({ theme, onThemeChange }: { theme: ThemePref; onThemeChange: 
 }
 
 export default function App() {
-  const { pref, resolved, setPref } = useTheme();
+  const { pref, setPref } = useTheme();
   const frameRef = useRef<HTMLDivElement>(null);
   const windowFx = useWindowFx(frameRef);
 
@@ -119,9 +119,7 @@ export default function App() {
       <div ref={frameRef} className="app">
         <ContextMenuProvider>
           <TitleBar
-            theme={resolved}
             maximized={windowFx.maximized}
-            onToggleTheme={() => setPref(resolved === "dark" ? "light" : "dark")}
             onDragStart={windowFx.startDrag}
             onMinimize={windowFx.minimize}
             onToggleMaximize={windowFx.toggleMaximize}

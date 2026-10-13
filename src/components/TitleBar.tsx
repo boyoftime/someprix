@@ -1,15 +1,12 @@
 import type { MouseEvent } from "react";
-import { Copy, Minus, Moon, Square, Sun, X } from "lucide-react";
+import { Copy, Minus, Square, X } from "lucide-react";
 import { useContextMenu } from "../ui/ContextMenu";
 import { Logo } from "./Logo";
 import { inTauri } from "../window/windowFx";
 import { isMac } from "../lib/platform";
-import type { ResolvedTheme } from "../theme";
 
 type TitleBarProps = {
-  theme: ResolvedTheme;
   maximized: boolean;
-  onToggleTheme: () => void;
   onDragStart: (event: MouseEvent) => void;
   onMinimize: () => void;
   onToggleMaximize: () => void;
@@ -17,15 +14,12 @@ type TitleBarProps = {
 };
 
 export function TitleBar({
-  theme,
   maximized,
-  onToggleTheme,
   onDragStart,
   onMinimize,
   onToggleMaximize,
   onClose,
 }: TitleBarProps) {
-  const nextTheme = theme === "dark" ? "light" : "dark";
   const openMenu = useContextMenu();
 
   return (
@@ -43,7 +37,6 @@ export function TitleBar({
             onSelect: onToggleMaximize,
             disabled: !inTauri,
           },
-          { label: `${nextTheme === "light" ? "Light" : "Dark"} theme`, icon: theme === "dark" ? Sun : Moon, onSelect: onToggleTheme },
           "separator",
           { label: "Close", icon: X, shortcut: isMac ? "⌘Q" : "Alt+F4", onSelect: onClose, disabled: !inTauri },
         ])
@@ -55,20 +48,6 @@ export function TitleBar({
       </div>
 
       <div className="titlebar-drag" />
-
-      <button
-        type="button"
-        className="tb-btn"
-        onClick={onToggleTheme}
-        aria-label={`${nextTheme === "light" ? "Light" : "Dark"} theme`}
-        data-tip={`${nextTheme === "light" ? "Light" : "Dark"} theme`}
-      >
-        {theme === "dark" ? (
-          <Sun size={17} strokeWidth={1.75} />
-        ) : (
-          <Moon size={17} strokeWidth={1.75} />
-        )}
-      </button>
 
       {/* A Mac has its own buttons at the left of the title bar. */}
       {inTauri && !isMac && (

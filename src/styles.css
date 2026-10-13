@@ -314,22 +314,6 @@ button {
   align-self: stretch;
 }
 
-.tb-btn {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-muted);
-}
-
-.tb-btn:hover {
-  background: var(--raised);
-  color: var(--text);
-}
-
 .tab {
   display: flex;
   align-items: center;
@@ -1072,81 +1056,294 @@ input::-ms-clear {
 
 /* ---------- Settings page ---------- */
 
+/* The page scrolls edge to edge (its scrollbar at the window's side); the content sits centred. */
 .settings-page {
-  max-width: 760px;
+  padding: 0;
 }
 
-.settings-title {
-  margin: 8px 0 22px;
-  font-size: 22px;
-  font-weight: 750;
-  letter-spacing: -0.015em;
-}
-
-.settings-section {
+.settings-inner {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 30px;
+  gap: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 28px 56px;
 }
 
-.settings-section .section-title {
+.settings-head h1 {
   margin: 0;
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
 }
 
-.settings-intro {
-  max-width: 62ch;
-  line-height: 1.55;
+.settings-head p {
+  margin: 4px 0 8px;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
-.settings-row {
+/* One card per subject */
+.set-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--dialog);
+}
+
+.set-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px 10px;
+}
+
+.set-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tone) 15%, transparent);
+  color: var(--tone);
+}
+
+.set-icon[data-tone="violet"] {
+  --tone: #8b7cf6;
+}
+
+.set-icon[data-tone="green"] {
+  --tone: var(--added);
+}
+
+.set-icon[data-tone="amber"] {
+  --tone: var(--modified);
+}
+
+.set-icon[data-tone="blue"] {
+  --tone: var(--accent);
+}
+
+.set-icon[data-tone="sky"] {
+  --tone: #3aa8e0;
+}
+
+.set-card-text h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.set-card-text p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.set-card-body {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 8px 8px;
+}
+
+/* Hairlines between the rows of a card, inset from its edges */
+.set-card-body > * + * {
+  position: relative;
+}
+
+.set-card-body > * + *::before {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  border-top: 1px solid var(--line);
+  content: "";
+}
+
+.set-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px;
 }
 
-.settings-label {
-  min-width: 80px;
+.set-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.set-row-label {
   font-size: 13.5px;
   font-weight: 650;
 }
 
-.settings-list {
+.set-row-hint {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.set-segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.set-note {
+  margin: 0;
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Projects: a list that scrolls inside its own box, with a filter once there are many */
+.set-projects {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.set-projects-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.set-count {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.set-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 220px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+  color: var(--text-muted);
+}
+
+.set-filter:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.set-filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.set-project-list {
+  max-height: 268px;
   padding: 2px;
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--field);
 }
 
-.settings-list .switch-hint {
+.set-project-list .switch-row {
+  padding: 8px 10px;
+}
+
+.set-project-list .switch-hint {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
-.settings-grid {
+/* How much is kept */
+.set-limits {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.set-limit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 12px;
 }
 
-.settings-number-input {
+.set-number {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.set-number-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.set-number-field {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.settings-number-input input {
-  width: 84px;
-}
-
-.settings-unit {
   color: var(--text-muted);
   font-size: 12.5px;
+  white-space: nowrap;
 }
 
-.settings-root input {
+.set-number-field input,
+.set-folder input {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  background: var(--field);
+  color: var(--text);
+}
+
+.set-number-field input {
+  width: 76px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.set-number-field input:focus,
+.set-folder input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.set-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+
+.set-folder input {
+  padding: 0 12px;
   font-family: var(--font-mono);
   font-size: 12.5px;
 }
