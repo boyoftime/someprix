@@ -74,10 +74,13 @@ export function NameShow() {
       <span className="nm-stage" aria-hidden="true">
         <Board tiles={tiles} />
         {/* The glass passing over as the letters change: a window moving across a copy of the
-            board, the copy held in place under it (and magnified, rippled or frosted by it). */}
-        <span className="nm-pane" data-glass={glass ?? undefined}>
-          <span className="nm-pane-inner">
-            <Board tiles={tiles} />
+            board, the copy held in place under it (and magnified, rippled or frosted by it). It
+            stays on the board: whatever reaches past its edges is cut off there. */}
+        <span className="nm-glass-clip">
+          <span className="nm-pane" data-glass={glass ?? undefined}>
+            <span className="nm-pane-inner">
+              <Board tiles={tiles} />
+            </span>
           </span>
         </span>
       </span>

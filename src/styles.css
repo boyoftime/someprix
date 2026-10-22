@@ -4532,13 +4532,32 @@ label.gh-choice-title {
   initial-value: 0px;
 }
 
+/* The pane's width, which grows from one tile and shrinks back to one. */
+@property --band {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
 .nm-stage {
   position: relative;
   display: grid;
 }
 
+/* The glass stays on the board (11.36em by 1.16em): it starts and ends over the tiles, never
+   out in the sky, and a slant's corner reaching past the edge is cut off there. */
+.nm-glass-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 0.12em;
+  pointer-events: none;
+}
+
 .nm-pane {
-  --band: 2.2em;
+  /* Slow to start, slow to stop. */
+  --glass-ease: cubic-bezier(0.37, 0, 0.63, 1);
+  --wide: 2.2em;
   --skew: 0deg;
   --zoom: 1;
   position: absolute;
@@ -4580,41 +4599,41 @@ label.gh-choice-title {
 
 /* Clear glass: a slanted pane with bright edges, magnifying a little. */
 .nm-pane[data-glass="glass"] {
-  --band: 2.2em;
+  --wide: 2.2em;
   --skew: -16deg;
   --zoom: 1.08;
   --lens: brightness(1.14) contrast(1.05);
   --sheen: linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.08) 14%, rgba(255, 255, 255, 0) 45%,
       rgba(255, 255, 255, 0.06) 80%, rgba(255, 255, 255, 0.42));
   --edge: inset 1px 0 0 rgba(255, 255, 255, 0.75), inset -1px 0 0 rgba(255, 255, 255, 0.55);
-  animation: nm-pass-glass 1400ms cubic-bezier(0.45, 0.05, 0.3, 1) both;
+  animation: nm-pass-glass 1700ms var(--glass-ease) both;
 }
 
 /* Water: a rounded pane, blue, rippling the letters. */
 .nm-pane[data-glass="water"] {
-  --band: 3em;
+  --wide: 3em;
   --zoom: 1.14;
   --lens: url(#nm-ripple) saturate(1.25) brightness(1.08);
   --sheen: radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 45%),
     linear-gradient(180deg, rgba(110, 190, 255, 0.2), rgba(60, 140, 255, 0.12));
   --edge: inset 0 0 0 1px rgba(200, 230, 255, 0.55), inset 0 -0.3em 0.6em rgba(80, 160, 255, 0.3);
   border-radius: 0.5em;
-  animation: nm-pass-water 1700ms cubic-bezier(0.45, 0.05, 0.3, 1) both;
+  animation: nm-pass-water 2000ms var(--glass-ease) both;
 }
 
 /* Frost: a wide frosted pane, from the right, the letters soft behind it. */
 .nm-pane[data-glass="frost"] {
-  --band: 3.6em;
+  --wide: 3.6em;
   --skew: 12deg;
   --lens: blur(2.5px) brightness(1.3) saturate(0.8);
   --sheen: linear-gradient(90deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.24));
   --edge: inset 1px 0 0 rgba(255, 255, 255, 0.55), inset -1px 0 0 rgba(255, 255, 255, 0.55);
-  animation: nm-pass-frost 1500ms cubic-bezier(0.45, 0.05, 0.3, 1) reverse both;
+  animation: nm-pass-frost 1800ms var(--glass-ease) both;
 }
 
 /* Prism: steeply slanted, with rainbow light through it. */
 .nm-pane[data-glass="prism"] {
-  --band: 2.6em;
+  --wide: 2.6em;
   --skew: -24deg;
   --zoom: 1.06;
   --lens: saturate(1.6) brightness(1.1);
@@ -4622,95 +4641,127 @@ label.gh-choice-title {
       rgba(60, 170, 255, 0.26) 75%, rgba(190, 80, 255, 0.32));
   --blend: screen;
   --edge: inset 1px 0 0 rgba(255, 255, 255, 0.65), inset -1px 0 0 rgba(255, 255, 255, 0.4);
-  animation: nm-pass-prism 1400ms cubic-bezier(0.45, 0.05, 0.3, 1) both;
+  animation: nm-pass-prism 1700ms var(--glass-ease) both;
 }
 
 /* Drop: a small round lens, magnifying a lot, rolling across. */
 .nm-pane[data-glass="drop"] {
-  --band: 1.9em;
+  --wide: 1.9em;
   --zoom: 1.32;
   --lens: brightness(1.1) saturate(1.2);
   --sheen: radial-gradient(60% 50% at 34% 24%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 60%),
     radial-gradient(closest-side, rgba(255, 255, 255, 0) 72%, rgba(255, 255, 255, 0.38));
   --outer: 0 0.25em 0.7em rgba(0, 0, 0, 0.35);
   border-radius: 50%;
-  animation: nm-pass-drop 1800ms cubic-bezier(0.45, 0.05, 0.3, 1) both;
+  animation: nm-pass-drop 2000ms var(--glass-ease) both;
 }
 
-/* Across the board (11.36em) and off the far side, showing only on the way. One name each, so a
-   new glass is always a new animation. */
+/* Each pass starts inside the first tile (0 to 0.8em) as a pane one tile wide, dissolving in
+   (fading and unblurring) as it widens to its own size and slides across, slow to start and slow
+   to stop; then narrows into the last tile (10.56em to 11.36em) and dissolves there. The same
+   path for every glass, under a name each, so a new glass is always a new animation. */
 @keyframes nm-pass-glass {
   0% {
-    --x: -4em;
+    --x: 0em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
-  10%,
-  88% {
+  30%,
+  70% {
+    --band: var(--wide);
     opacity: 1;
+    filter: blur(0);
   }
   100% {
-    --x: 13.5em;
+    --x: 10.56em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
 }
 
 @keyframes nm-pass-water {
   0% {
-    --x: -4em;
+    --x: 0em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
-  10%,
-  88% {
+  30%,
+  70% {
+    --band: var(--wide);
     opacity: 1;
+    filter: blur(0);
   }
   100% {
-    --x: 13.5em;
+    --x: 10.56em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
 }
 
 @keyframes nm-pass-frost {
   0% {
-    --x: -4.5em;
+    --x: 0em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
-  12%,
-  90% {
+  30%,
+  70% {
+    --band: var(--wide);
     opacity: 1;
+    filter: blur(0);
   }
   100% {
-    --x: 13.5em;
+    --x: 10.56em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
 }
 
 @keyframes nm-pass-prism {
   0% {
-    --x: -4.5em;
+    --x: 0em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
-  10%,
-  88% {
+  30%,
+  70% {
+    --band: var(--wide);
     opacity: 1;
+    filter: blur(0);
   }
   100% {
-    --x: 14em;
+    --x: 10.56em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
 }
 
 @keyframes nm-pass-drop {
   0% {
-    --x: -3em;
+    --x: 0em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
-  10%,
-  88% {
+  30%,
+  70% {
+    --band: var(--wide);
     opacity: 1;
+    filter: blur(0);
   }
   100% {
-    --x: 13em;
+    --x: 10.56em;
+    --band: 0.8em;
     opacity: 0;
+    filter: blur(0.12em);
   }
 }
 
@@ -4730,32 +4781,43 @@ label.gh-choice-title {
   }
 }
 
-/* A quote under the names, on one line where there's room. */
+/* A quote under the names, big, with Plato below it in a serif italic (the UI font has no true
+   italic). */
 .about-quote {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: center;
-  gap: 2px 10px;
-  max-width: min(92%, 48em);
-  margin: clamp(6px, 1.6vh, 18px) 0 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: min(92%, 40em);
+  margin: clamp(8px, 2vh, 22px) 0 0;
   text-align: center;
-  text-shadow: 0 1px 10px rgba(8, 10, 24, 0.55);
+  text-shadow: 0 1px 12px rgba(8, 10, 24, 0.55);
   animation: about-rise 700ms var(--ease-out) 450ms both;
 }
 
 .about-quote blockquote {
   margin: 0;
-  color: rgba(255, 255, 255, 0.92);
-  font-size: clamp(14px, 1.3vw, 18px);
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  color: #fff;
+  font-size: clamp(17px, 1.9vw, 28px);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  line-height: 1.3;
+  text-wrap: balance;
 }
 
 .about-quote figcaption {
-  color: rgba(255, 255, 255, 0.64);
-  font-size: clamp(12px, 1vw, 14px);
-  font-weight: 500;
+  color: rgba(255, 230, 196, 0.92);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(15px, 1.4vw, 21px);
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+
+/* A short window: a smaller logo, so the names and the quote still fit above the app. */
+@media (max-height: 680px) {
+  .about-studio {
+    width: clamp(200px, min(35vw, 42vh), 560px);
+  }
 }
 
 .about-panel {

@@ -20,7 +20,7 @@ export function AboutPage() {
         <NameShow />
         <figure className="about-quote">
           <blockquote>“The measure of a man is what he does with power.”</blockquote>
-          <figcaption>— attributed to Plato</figcaption>
+          <figcaption>— Plato</figcaption>
         </figure>
       </div>
       <div className="about-panel">
