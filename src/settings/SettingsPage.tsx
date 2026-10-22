@@ -339,7 +339,7 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
         github === null ? (
           <Loading label="Checking GitHub" />
         ) : github.account ? (
-          <GithubAccount account={github.account} fresh={justSignedIn} onSignOut={() => void signOut()} />
+          <GithubAccount account={github.account} fresh={justSignedIn} onSignOut={signOut} />
         ) : (
           <GitHubSignIn
             deviceFlow={github.deviceFlow}

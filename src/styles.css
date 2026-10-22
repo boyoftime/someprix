@@ -1554,10 +1554,43 @@ input::-ms-clear {
   }
 }
 
+/* Signing out: who's leaving, with a sign-out mark on the picture. */
+.gh-leaving {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+}
+
+.gh-leaving-pic {
+  position: relative;
+  flex: none;
+}
+
+.gh-leaving-mark {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--raised);
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  animation: tick-pop 420ms var(--ease-out) 140ms both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gh-account[data-fresh] .gh-avatar,
   .gh-account[data-fresh] .gh-verified,
-  .gh-account[data-fresh] .gh-verified-check {
+  .gh-account[data-fresh] .gh-verified-check,
+  .gh-leaving-mark {
     animation: none;
   }
 }
