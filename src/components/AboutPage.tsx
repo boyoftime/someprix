@@ -38,7 +38,6 @@ export function AboutPage() {
           </button>
         </div>
       </div>
-      <p className="about-credit">Photo from Unsplash</p>
     </div>
   );
 }
