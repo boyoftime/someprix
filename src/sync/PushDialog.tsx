@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Gauge, TriangleAlert, Zap } from "lucide-react";
+import { Check, Gauge, Trash2, TriangleAlert, Zap } from "lucide-react";
 import { Dialog } from "../ui/Dialog";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
 import { useSmoothFill } from "../ui/useSmoothFill";
@@ -30,6 +30,13 @@ const DONE_PAUSE = 700;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** "Push 3 files", "Push 3 files, delete 1", or "Delete 1 file". */
+function pushLabel(uploading: number, deleting: number) {
+  if (deleting === 0) return `Push ${plural(uploading, "file")}`;
+  if (uploading === 0) return `Delete ${plural(deleting, "file")}`;
+  return `Push ${plural(uploading, "file")}, delete ${deleting}`;
+}
+
 /** What can be done with a conflicting file; a file deleted here is deleted there by "Overwrite". */
 function choicesFor(conflict: Conflict): [Choice, string][] {
   return [
@@ -49,7 +56,10 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const { notify, recordPush, project } = useAppData();
   // The list as it was when the dialog opened; pushing updates the live one underneath.
   const [listed] = useState(changes);
-  const [includeDeletions, setIncludeDeletions] = useState(false);
+  // Files deleted here are deleted on the server too, except these, kept there this time.
+  const [kept, setKept] = useState<string[]>([]);
+  const toggleKept = (path: string) =>
+    setKept((now) => (now.includes(path) ? now.filter((p) => p !== path) : [...now, path]));
   const [phase, setPhase] = useState<Phase>("ready");
   const [progress, setProgress] = useState<PushProgress | null>(null);
   const transfer = useTransferSpeed(phase === "pushing", settling(progress));
@@ -71,10 +81,12 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const target = `${host.username}@${host.host}:${remoteDir}`;
   // The order the server works through them: uploads first, then deletions.
   const order = uploads
-    .concat(includeDeletions ? deletions : [])
+    .concat(deletions)
     .map((c) => c.path)
-    .filter((path) => !held.includes(path));
+    .filter((path) => !held.includes(path) && !kept.includes(path));
   const count = order.length;
+  const isDeletion = (path: string) => deletions.some((c) => c.path === path);
+  const deleting = order.filter(isDeletion).length;
 
   /** Checks the server for changes made there since the last push, then pushes or asks. */
   async function start() {
@@ -83,7 +95,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
     setPhase("checking");
     let found: Conflict[];
     try {
-      found = await api.conflicts(includeDeletions, only);
+      found = (await api.conflicts(true, only)).filter((c) => !kept.includes(c.path));
     } catch (e) {
       setError(errorMessage(e));
       setPhase("ready");
@@ -126,7 +138,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
     transfer.reset();
     const unlisten = await api.onPushProgress(onProgress);
     try {
-      const report = await api.push(includeDeletions, only, fast, skip);
+      const report = await api.push(true, only, fast, skip.concat(kept));
       if (report.cancelled) {
         notify("Push cancelled. Nothing changed on the server.");
         recordPush([]);
@@ -171,7 +183,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const percent = done ? 100 : Math.min(99, Math.floor(fraction * 100));
   const currentPath = progress?.path ?? null;
   const stage = progress?.stage ?? null;
-  const currentIsDeletion = deletions.some((c) => c.path === currentPath);
+  const currentIsDeletion = currentPath !== null && isDeletion(currentPath);
   const pushing = phase === "pushing" || done;
 
   // Until files start going into place, Cancel takes the push back.
@@ -197,7 +209,9 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const undecided = conflicts.filter((c) => !choices[c.path]).length;
   const holding = conflicts.filter((c) => choices[c.path] && choices[c.path] !== "overwrite").map((c) => c.path);
   const taking = conflicts.filter((c) => choices[c.path] === "server").length;
-  const pushingAfter = order.filter((path) => !holding.includes(path)).length;
+  const after = order.filter((path) => !holding.includes(path));
+  const pushingAfter = after.length;
+  const deletingAfter = after.filter(isDeletion).length;
   const others = order.length - conflicts.length;
   const choose = (path: string, choice: Choice) => setChoices((now) => ({ ...now, [path]: choice }));
   const chooseAll = (choice: Choice) => setChoices(Object.fromEntries(conflicts.map((c) => [c.path, choice])));
@@ -211,7 +225,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
           : undecided > 0
             ? "Continue"
             : pushingAfter > 0
-              ? `Push ${plural(pushingAfter, "file")}`
+              ? pushLabel(pushingAfter - deletingAfter, deletingAfter)
               : taking > 0
                 ? `Get ${plural(taking, "server version")}`
                 : "Done",
@@ -228,7 +242,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
             ? "Pushing…"
             : error
               ? "Retry"
-              : `Push ${plural(count, "file")}`,
+              : pushLabel(count - deleting, deleting),
       run: start,
       disabled: busy || count === 0,
     };
@@ -357,12 +371,19 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
         ) : (
           <ul className="push-list">
             {uploads.concat(deletions).map((change) => {
-              const skipped = (change.kind === "deleted" && !includeDeletions) || held.includes(change.path);
+              const deletion = change.kind === "deleted";
+              const keeping = kept.includes(change.path);
+              const skipped = keeping || held.includes(change.path);
               const index = order.indexOf(change.path);
               const state =
                 !pushing || index < 0 ? "idle" : index < filesDone ? "done" : index === filesDone && !done ? "current" : "waiting";
               return (
-                <li key={change.path} data-skipped={skipped ? "" : undefined} data-state={state}>
+                <li
+                  key={change.path}
+                  data-skipped={skipped ? "" : undefined}
+                  data-state={state}
+                  data-delete={deletion && !skipped && state !== "done" ? "" : undefined}
+                >
                   <span className={`change-dot ${change.kind}`} aria-hidden="true" />
                   <span className="push-path">{change.path}</span>
                   <span className="push-kind">
@@ -370,6 +391,25 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
                       <Check size={15} strokeWidth={2.25} className="push-done" aria-label="Done" />
                     ) : state === "current" ? (
                       <span className="push-spinner" aria-label="In progress" />
+                    ) : deletion && phase === "ready" ? (
+                      // Deleted on the server too; a click keeps it there this time.
+                      <button
+                        type="button"
+                        className="push-delete"
+                        aria-pressed={!keeping}
+                        aria-label={keeping ? `Delete ${change.path} on the server too` : `Keep ${change.path} on the server`}
+                        data-tip={keeping ? "Delete it on the server too" : "Keep it on the server this time"}
+                        onClick={() => toggleKept(change.path)}
+                      >
+                        {keeping ? (
+                          "Skip"
+                        ) : (
+                          <>
+                            <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
+                            Delete
+                          </>
+                        )}
+                      </button>
                     ) : skipped ? (
                       "Skip"
                     ) : change.kind === "added" ? (
@@ -384,13 +424,6 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
               );
             })}
           </ul>
-        )}
-
-        {deletions.length > 0 && phase === "ready" && (
-          <label className="check">
-            <input type="checkbox" checked={includeDeletions} onChange={(e) => setIncludeDeletions(e.target.checked)} />
-            <span>Delete {plural(deletions.length, "removed file")} on server</span>
-          </label>
         )}
 
         {phase === "checking" && (

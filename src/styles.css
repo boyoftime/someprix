@@ -2511,6 +2511,58 @@ input::-ms-clear {
   background: var(--accent-soft);
 }
 
+/* A file deleted here, about to be deleted on the server too: red until it's done. */
+.push-list li[data-delete] {
+  border-radius: 6px;
+  background: var(--danger-soft);
+}
+
+.push-list li[data-delete] + li[data-delete] {
+  margin-top: 2px;
+}
+
+.push-list li[data-delete] .push-path {
+  color: var(--danger-text);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger-text) 55%, transparent);
+}
+
+.push-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--danger) 50%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--danger-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.push-delete:hover {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.push-delete[aria-pressed="false"] {
+  border-color: var(--line);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.push-delete[aria-pressed="false"]:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.push-delete:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .push-done {
   color: var(--added);
 }
