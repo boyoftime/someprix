@@ -18,6 +18,10 @@ export function AboutPage() {
       <div className="about-sky">
         <img className="about-studio" src={studio} alt="Someless Tricks" draggable={false} />
         <NameShow />
+        <figure className="about-quote">
+          <blockquote>“The measure of a man is what he does with power.”</blockquote>
+          <figcaption>— attributed to Plato</figcaption>
+        </figure>
       </div>
       <div className="about-panel">
         <div className="about-app">
