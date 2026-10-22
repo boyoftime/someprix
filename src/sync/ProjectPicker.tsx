@@ -9,6 +9,8 @@ type ProjectPickerProps = {
   root: string;
   name: string;
   disabled?: boolean;
+  /** The server showing: each project shows its folder there. */
+  serverId: string | null;
   /** Opens another known project. */
   onOpen: (root: string) => void;
   /** Picks a folder not on the list. */
@@ -19,7 +21,7 @@ type ProjectPickerProps = {
  * The project switcher in the Local pane's header: every project folder opened before, each with
  * the server folder it pushes to, so switching brings both sides along.
  */
-export function ProjectPicker({ root, name, disabled = false, onOpen, onBrowse }: ProjectPickerProps) {
+export function ProjectPicker({ root, name, disabled = false, serverId, onOpen, onBrowse }: ProjectPickerProps) {
   const { hosts, notify } = useAppData();
   const [open, setOpen] = useState(false);
   const [pairs, setPairs] = useState<ProjectPair[] | null>(null);
@@ -98,16 +100,18 @@ export function ProjectPicker({ root, name, disabled = false, onOpen, onBrowse }
     }
   };
 
-  /** Where the project pushes to, in a line (a long folder keeps its end in view). */
+  /** Where the project goes on the server showing, in a line (a long folder keeps its end in view). */
   const serverLine = (pair: ProjectPair) => {
     if (!pair.exists) return "Folder not found on this computer";
-    const host = hosts.find((h) => h.id === pair.hostId);
-    if (!host || !pair.remoteDir) return "No server folder yet";
+    const host = hosts.find((h) => h.id === (serverId ?? pair.hostId));
+    const dir = host ? pair.destinations[host.id] : undefined;
+    if (!host) return "No server folder yet";
+    if (!dir) return `No folder on ${host.label} yet`;
     return (
       <>
         <span className="picker-host">{host.label}</span>
         <span className="path-tail">
-          <bdi>{pair.remoteDir}</bdi>
+          <bdi>{dir}</bdi>
         </span>
       </>
     );
@@ -143,7 +147,7 @@ export function ProjectPicker({ root, name, disabled = false, onOpen, onBrowse }
           ) : (
             pairs.map((pair) => {
               const selected = sameLocal(pair.root, root);
-              const paired = pair.exists && Boolean(pair.hostId && pair.remoteDir);
+              const paired = pair.exists && Boolean(pair.destinations[serverId ?? pair.hostId ?? ""]);
               return (
                 <div key={pair.root} className="picker-row">
                   <button

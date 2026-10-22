@@ -51,7 +51,8 @@ type AppData = {
   project: ProjectInfo | null;
   projectLoading: boolean;
   /** Opens a project folder; resolves to the opened project, or null if it failed (already reported). */
-  openProject: (root: string) => Promise<ProjectInfo | null>;
+  /** With `hostId`, on that server (switching projects keeps the server showing). */
+  openProject: (root: string, hostId?: string | null) => Promise<ProjectInfo | null>;
   closeProject: () => Promise<void>;
   setTarget: (hostId: string | null, remoteDir: string | null) => Promise<void>;
   /** Leaves project paths out of pushing (or, with `exclude` false, puts them back). */
@@ -304,10 +305,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   );
 
   const openProject = useCallback(
-    async (root: string) => {
+    async (root: string, hostId?: string | null) => {
       setProjectLoading(true);
       try {
-        const opened = await api.openProject(root);
+        const opened = await api.openProject(root, hostId);
         setProject(opened);
         return opened;
       } catch (error) {

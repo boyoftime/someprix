@@ -29,6 +29,8 @@ type LocalPaneProps = {
   onShowHistory: () => void;
   /** Told the width the footer needs on one line, so the divider never squeezes it. */
   onFootWidth: (width: number) => void;
+  /** The server showing: switching projects keeps it (each opens at its folder there, if any). */
+  serverId: string | null;
 };
 
 async function pickFolder() {
@@ -93,7 +95,16 @@ function WatchStatus({ changes, scanning }: { changes: Change[]; scanning: boole
   );
 }
 
-export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange, onShowHistory, onFootWidth }: LocalPaneProps) {
+export function LocalPane({
+  pushBlocker,
+  onPush,
+  onPushPaths,
+  fast,
+  onFastChange,
+  onShowHistory,
+  onFootWidth,
+  serverId,
+}: LocalPaneProps) {
   const { project, projectLoading, openProject, notify, excludeFromPush, refreshProject } = useAppData();
   // The list of excluded paths, while it's open.
   const [showExcluded, setShowExcluded] = useState(false);
@@ -162,7 +173,7 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
   async function choose() {
     const folder = await pickFolder();
     if (!folder) return;
-    const opened = await openProject(folder);
+    const opened = await openProject(folder, serverId);
     if (opened) notify(`Watching ${opened.name}`);
   }
 
@@ -243,7 +254,8 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
           root={project.root}
           name={project.name}
           disabled={projectLoading}
-          onOpen={(root) => void openProject(root)}
+          serverId={serverId}
+          onOpen={(root) => void openProject(root, serverId)}
           onBrowse={() => void choose()}
         />
       </header>

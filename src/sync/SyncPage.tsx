@@ -48,19 +48,19 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
   const destination = project && host && project.hostId === host.id ? project.remoteDir : null;
 
   const selectHost = (id: string) => void switchServer(id);
-  /** Another server picked: if this project has a folder there, it comes back; if not, the project
-   *  last used with that server opens instead, so both sides match (or stays, if asked). */
+  /** Another server picked (only ever by hand): its own state comes back, the project last open
+   *  with it, at its folder there. With none on record, this project stays if it has a folder
+   *  there, else the most recent one that has opens (Stay on … keeps this one). */
   const switchServer = async (id: string) => {
     setLooseHostId(id);
     if (project?.hostId === id) return;
     const pairs = await api.projectPairs().catch(() => []);
-    const mine = project ? pairs.find((p) => sameLocal(p.root, project.root)) : undefined;
-    const other = lastOn(pairs, id);
-    if (other && !mine?.destinations[id] && !(project && sameLocal(other.root, project.root))) {
+    const here = project ? pairs.find((p) => sameLocal(p.root, project.root)) : undefined;
+    const last = pairs.find((p) => p.exists && p.lastFor.includes(id));
+    const other = last ?? (here?.destinations[id] ? undefined : lastOn(pairs, id));
+    if (other && !(project && sameLocal(other.root, project.root))) {
       const from = project;
-      const opened = await openProject(other.root);
-      if (!opened) return;
-      if (opened.hostId !== id) await setTarget(id, null);
+      if (!(await openProject(other.root, id))) return;
       const server = hosts.find((h) => h.id === id)?.label ?? "that server";
       notify(
         `Opened ${other.name}, the project on ${server}`,
@@ -72,9 +72,7 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
     if (project) await setTarget(id, null);
   };
   /** Back to the project that was open, on the server picked (to give it a folder there). */
-  const stay = async (root: string, id: string) => {
-    if (await openProject(root)) await setTarget(id, null);
-  };
+  const stay = (root: string, id: string) => openProject(root, id);
 
   useEffect(() => {
     if (!requestedHostId) return;
@@ -146,6 +144,7 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
         onFastChange={changeFast}
         onShowHistory={() => setHistory({})}
         onFootWidth={setFootWidth}
+        serverId={hostId}
       />
       <Splitter container={panes} split={split} onChange={setSplit} minLeft={footWidth} />
       <ServerPane

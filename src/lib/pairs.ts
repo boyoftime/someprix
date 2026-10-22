@@ -27,29 +27,24 @@ function inside(root: string, path: string): string | null {
     .join("/");
 }
 
-/** The pair a local folder belongs to (it, or the nearest folder it's in that's paired with a server folder). */
-export function pairFor(pairs: ProjectPair[], path: string): ProjectPair | null {
+/** The pair a local folder belongs to (it, or the nearest folder it's in that's paired with a
+ *  server folder); with `hostId`, only pairs with a folder on that server. */
+export function pairFor(pairs: ProjectPair[], path: string, hostId?: string | null): ProjectPair | null {
   let best: ProjectPair | null = null;
   for (const pair of pairs) {
-    if (!Object.keys(pair.destinations).length || inside(pair.root, path) === null) continue;
+    const paired = hostId === undefined ? Object.keys(pair.destinations).length > 0 : Boolean(hostId && pair.destinations[hostId]);
+    if (!paired || inside(pair.root, path) === null) continue;
     if (!best || comparable(pair.root).length > comparable(best.root).length) best = pair;
   }
   return best;
 }
 
-/** Where a pair goes: its folder on `hostId` if it has one there, else on the server it uses. */
-export function placeFor(pair: ProjectPair, hostId: string | null): { hostId: string; dir: string } | null {
-  if (hostId && pair.destinations[hostId]) return { hostId, dir: pair.destinations[hostId] };
-  if (pair.hostId && pair.remoteDir) return { hostId: pair.hostId, dir: pair.remoteDir };
-  const [first] = Object.entries(pair.destinations);
-  return first ? { hostId: first[0], dir: first[1] } : null;
-}
-
-/** The project last used with a server: one using it now (most recently opened first), else any
- *  with a folder there. `pairs` comes most recently opened first. */
-export function lastOn(pairs: ProjectPair[], hostId: string): ProjectPair | null {
+/** The project last open with a server (with `withFolder`, only if it has a folder there);
+ *  without one on record, the most recently opened with a folder there. `pairs` comes most
+ *  recently opened first. */
+export function lastOn(pairs: ProjectPair[], hostId: string, withFolder = false): ProjectPair | null {
   return (
-    pairs.find((p) => p.exists && p.hostId === hostId && p.remoteDir) ??
+    pairs.find((p) => p.exists && p.lastFor.includes(hostId) && (!withFolder || p.destinations[hostId])) ??
     pairs.find((p) => p.exists && p.destinations[hostId]) ??
     null
   );

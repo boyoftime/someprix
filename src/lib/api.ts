@@ -155,6 +155,8 @@ export type ProjectPair = {
   remoteDir: string | null;
   /** Its folder on each server it was paired with (host id → folder), the one in use included. */
   destinations: Record<string, string>;
+  /** The servers it was the project last open with in Sync. */
+  lastFor: string[];
   /** Last opened in Sync (Unix milliseconds); 0 if never. */
   opened: number;
   /** Still there on this computer. */
@@ -239,7 +241,8 @@ export const api = {
   /** Deletes files and folders (with everything inside); returns how many items went. */
   deleteRemote: (hostId: string, paths: string[], fast = false) => call<number>("ssh_delete", { hostId, paths, fast }),
 
-  openProject: (root: string) => call<ProjectInfo>("project_open", { root }),
+  /** With `hostId`, on that server (switching projects keeps the server); without, on the one it had. */
+  openProject: (root: string, hostId?: string | null) => call<ProjectInfo>("project_open", { root, hostId: hostId ?? null }),
   currentProject: () => call<ProjectInfo | null>("project_current"),
   closeProject: () => call<void>("project_close"),
   listLocal: (dir: string) => call<LocalEntry[]>("project_list", { dir }),

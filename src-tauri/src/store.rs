@@ -83,11 +83,21 @@ impl ProjectLink {
         self.host_id = host_id;
     }
 
-    /// Forgets the folder on `host`, and stops using that server if it's the one in use.
+    /// Records its folder on `host` (SFTP's Pair) without changing the server it uses, unless it
+    /// has none yet; on the server it uses, that's its destination.
+    pub fn pair_with(&mut self, host: &str, dir: &str) {
+        self.keep_current();
+        self.destinations.insert(host.to_string(), dir.to_string());
+        if self.host_id.is_none() || self.host_id.as_deref() == Some(host) {
+            self.host_id = Some(host.to_string());
+            self.remote_dir = Some(dir.to_string());
+        }
+    }
+
+    /// Forgets the folder on `host`. The server it uses stays (its destination is then not set).
     pub fn unpair(&mut self, host: &str) {
         self.destinations.remove(host);
         if self.host_id.as_deref() == Some(host) {
-            self.host_id = None;
             self.remote_dir = None;
         }
     }
@@ -171,6 +181,9 @@ struct Data {
     /// The project folder that was open last.
     active_project: Option<String>,
     projects: HashMap<String, ProjectLink>,
+    /// The project folder last open in Sync with each server (host id → folder): picking that
+    /// server again brings it back.
+    server_projects: HashMap<String, String>,
     settings: Settings,
 }
 
@@ -256,6 +269,21 @@ impl Store {
         self.update(|data| {
             data.projects.insert(root.to_string(), link);
         })
+    }
+
+    /// Remembers `root` as the project open with server `host`.
+    pub fn set_server_project(&self, host: &str, root: &str) -> Result<(), String> {
+        if self.data.lock().unwrap().server_projects.get(host).is_some_and(|r| r == root) {
+            return Ok(());
+        }
+        self.update(|data| {
+            data.server_projects.insert(host.to_string(), root.to_string());
+        })
+    }
+
+    /// The project folder last open with each server (host id → folder).
+    pub fn server_projects(&self) -> HashMap<String, String> {
+        self.data.lock().unwrap().server_projects.clone()
     }
 
     pub fn projects(&self) -> Vec<(String, ProjectLink)> {

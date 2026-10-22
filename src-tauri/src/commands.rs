@@ -333,8 +333,15 @@ fn project_info(state: &AppState) -> Option<ProjectInfo> {
     })
 }
 
+/// Opens a project folder. With `host_id`, on that server (the one showing: switching projects
+/// never switches servers), at its folder there if it has one; without, on the server it had.
 #[tauri::command]
-pub async fn project_open(app: AppHandle, state: State<'_, AppState>, root: String) -> Result<ProjectInfo, String> {
+pub async fn project_open(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    root: String,
+    host_id: Option<String>,
+) -> Result<ProjectInfo, String> {
     let root = root_key(&root);
     let baseline = state.store.baseline_path(&root);
     let shared = state.project.clone();
@@ -349,6 +356,12 @@ pub async fn project_open(app: AppHandle, state: State<'_, AppState>, root: Stri
     let mut link = state.store.project_link(&root);
     link.opened = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
     link.hidden = false;
+    if host_id.is_some() && host_id != link.host_id {
+        link.point_at(host_id, None);
+    }
+    if let Some(host) = &link.host_id {
+        state.store.set_server_project(host, &root)?;
+    }
     state.store.set_project_link(&root, link)?;
     project_info(&state).ok_or_else(|| "Project closed".into())
 }
@@ -363,6 +376,8 @@ pub struct ProjectPair {
     remote_dir: Option<String>,
     /// Its folder on each server it was paired with (host id → folder), the one in use included.
     destinations: HashMap<String, String>,
+    /// The servers it was the project last open with in Sync.
+    last_for: Vec<String>,
     /// Last opened in Sync (Unix milliseconds); 0 if never.
     opened: u64,
     /// Still there on this computer.
@@ -373,6 +388,7 @@ pub struct ProjectPair {
 /// what SFTP matches local folders with server folders by.
 #[tauri::command]
 pub fn project_pairs(state: State<'_, AppState>) -> Vec<ProjectPair> {
+    let last = state.store.server_projects();
     let mut pairs: Vec<ProjectPair> = state
         .store
         .projects()
@@ -382,6 +398,7 @@ pub fn project_pairs(state: State<'_, AppState>) -> Vec<ProjectPair> {
             name: Path::new(&root).file_name().map_or_else(|| root.clone(), |n| n.to_string_lossy().into_owned()),
             exists: Path::new(&root).is_dir(),
             destinations: link.all_destinations(),
+            last_for: last.iter().filter(|(_, r)| **r == root).map(|(host, _)| host.clone()).collect(),
             root,
             host_id: link.host_id,
             remote_dir: link.remote_dir,
@@ -393,15 +410,15 @@ pub fn project_pairs(state: State<'_, AppState>) -> Vec<ProjectPair> {
     pairs
 }
 
-/// Pairs a folder on this computer with a folder on `host_id` (and uses that server for it from
-/// now on), or with no folder unpairs it from that server; for any folder, not only the project
-/// open in Sync (where this is its destination).
+/// Pairs a folder on this computer with a folder on `host_id`, or with no folder unpairs it from
+/// that server; for any folder, not only the project open in Sync. The server Sync uses for it
+/// doesn't change (on that server, this is its destination).
 #[tauri::command]
 pub fn project_pair_set(state: State<'_, AppState>, root: String, host_id: String, remote_dir: Option<String>) -> Result<(), String> {
     let root = root_key(&root);
     let mut link = state.store.project_link(&root);
     match remote_dir {
-        Some(dir) => link.point_at(Some(host_id), Some(dir)),
+        Some(dir) => link.pair_with(&host_id, &dir),
         None => link.unpair(&host_id),
     }
     link.hidden = false;
@@ -428,7 +445,7 @@ pub async fn project_current(app: AppHandle, state: State<'_, AppState>) -> Resu
         return Ok(Some(info));
     }
     match state.store.active_project() {
-        Some(root) if Path::new(&root).is_dir() => project_open(app, state, root).await.map(Some),
+        Some(root) if Path::new(&root).is_dir() => project_open(app, state, root, None).await.map(Some),
         _ => Ok(None),
     }
 }
@@ -456,6 +473,9 @@ pub fn project_set_target(
     let root = project_info(&state).ok_or("No project open")?.root;
     let mut link = state.store.project_link(&root);
     link.point_at(host_id, remote_dir);
+    if let Some(host) = &link.host_id {
+        state.store.set_server_project(host, &root)?;
+    }
     state.store.set_project_link(&root, link)?;
     project_info(&state).ok_or_else(|| "Project closed".into())
 }

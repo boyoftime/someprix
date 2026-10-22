@@ -4,7 +4,7 @@ import { api, type LocalFsEntry, type ProjectPair, type PushProgress } from "../
 import { errorMessage, useAppData } from "../state/AppData";
 import { HostDialog } from "../hosts/HostDialog";
 import { ServerPane, type GoTo } from "../sync/ServerPane";
-import { lastOn, mirror, pairFor, placeFor, sameLocal } from "../lib/pairs";
+import { lastOn, mirror, pairFor, sameLocal } from "../lib/pairs";
 import { Splitter, useSplit } from "../sync/Splitter";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
 import { useFast } from "../ui/FastToggle";
@@ -73,45 +73,43 @@ export function SftpPage({ shown }: { shown: boolean }) {
   hostIdRef.current = hostId;
   const remoteDirRef = useRef(remoteDir);
   remoteDirRef.current = remoteDir;
-  // Where the server side was asked to go (on the paired folder's server, which it switches to).
+  // Where the server side was asked to go, on the server showing (only picking one by hand
+  // changes servers).
   const [goTo, setGoTo] = useState<GoTo | null>(null);
   const goSeq = useRef(0);
-  const go = (pairHost: string, path: string, fallback?: string) => {
-    if (pairHost !== hostIdRef.current) selectHost(pairHost);
-    setGoTo({ hostId: pairHost, path, fallback, seq: ++goSeq.current });
-  };
+  const go = (onHost: string, path: string, fallback?: string) =>
+    setGoTo({ hostId: onHost, path, fallback, seq: ++goSeq.current });
 
-  // Entering a paired folder opens its server folder (on the server showing, if it has one there);
-  // moving about inside it, the server side follows as long as it's still in step (browsed
-  // somewhere else, it stays put).
+  // Entering a folder paired on the server showing opens its folder there; moving about inside
+  // it, the server side follows as long as it's still in step (browsed elsewhere, it stays put).
   const followed = useRef<string | null>(null);
   useEffect(() => {
     if (pairs === null || localDir === null) return;
     const before = followed.current;
     followed.current = localDir;
-    // Opened to stay on the server showing (Back, after switching servers): nothing follows.
+    // Opened to stay where the server is (Back, after switching servers): nothing follows.
     if (quiet.current !== null && sameLocal(quiet.current, localDir)) {
       quiet.current = null;
       return;
     }
-    const pair = pairFor(pairs, localDir);
-    const place = pair && placeFor(pair, hostIdRef.current);
-    if (!pair || !place) return;
-    const target = mirror(pair, place.dir, localDir);
-    const previous = before === null ? null : pairFor(pairs, before);
+    const onHost = hostIdRef.current;
+    const pair = onHost ? pairFor(pairs, localDir, onHost) : null;
+    const dir = pair && onHost ? pair.destinations[onHost] : undefined;
+    if (!pair || !onHost || !dir) return;
+    const target = mirror(pair, dir, localDir);
+    const previous = before === null ? null : pairFor(pairs, before, onHost);
     if (previous?.root === pair.root) {
       // Inside the same pair: only while in step, and only to a folder that's there.
-      const was = before === null ? null : mirror(pair, place.dir, before);
-      const inStep = hostIdRef.current === place.hostId && remoteDirRef.current === was;
-      if (!inStep || target === remoteDirRef.current) return;
-      void api.listRemote(place.hostId, target).then(
-        () => followed.current === localDir && remoteDirRef.current === was && go(place.hostId, target),
+      const was = before === null ? null : mirror(pair, dir, before);
+      if (remoteDirRef.current !== was || target === remoteDirRef.current) return;
+      void api.listRemote(onHost, target).then(
+        () => followed.current === localDir && remoteDirRef.current === was && go(onHost, target),
         () => {},
       );
       return;
     }
-    // Just came in: its server folder (the paired one itself if the way down isn't there).
-    if (target !== remoteDirRef.current || place.hostId !== hostIdRef.current) go(place.hostId, target, place.dir);
+    // Just came in: its folder (the paired one itself if the way down isn't there).
+    if (target !== remoteDirRef.current) go(onHost, target, dir);
   }, [localDir, pairs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The local side, sent to a folder from here (switching servers); `quiet`: without the server following.
@@ -129,8 +127,8 @@ export function SftpPage({ shown }: { shown: boolean }) {
     if (!pairs || localDir === null) return;
     const pair = pairFor(pairs, localDir);
     if (!pair || pair.destinations[id]) return;
-    const other = lastOn(pairs, id);
-    if (!other) return;
+    const other = lastOn(pairs, id, true);
+    if (!other || sameLocal(other.root, pair.root)) return;
     const from = localDir;
     openLocal(other.root);
     const server = hosts.find((h) => h.id === id)?.label ?? "that server";
@@ -146,31 +144,32 @@ export function SftpPage({ shown }: { shown: boolean }) {
     const switched = shownHost.current !== hostId;
     shownHost.current = hostId;
     if (!switched || !hostId || !pairs || localDir === null) return;
-    const pair = pairFor(pairs, localDir);
+    const pair = pairFor(pairs, localDir, hostId);
     const dir = pair?.destinations[hostId];
     if (pair && dir) go(hostId, mirror(pair, dir, localDir), dir);
   }, [hostId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const shownPair = localDir ? (pairs && pairFor(pairs, localDir)) : null;
-  const shownPlace = shownPair && placeFor(shownPair, hostId);
+  // The pair on the server showing (each server has its own; others don't show here).
+  const shownPair = localDir && hostId && pairs ? pairFor(pairs, localDir, hostId) : null;
+  const shownDir = shownPair && hostId ? shownPair.destinations[hostId] : undefined;
   const pairing: Pairing = {
     pair:
-      shownPair && shownPlace && localDir
+      shownPair && shownDir && localDir
         ? {
-            remotePath: mirror(shownPair, shownPlace.dir, localDir),
-            hostLabel: hosts.find((h) => h.id === shownPlace.hostId)?.label ?? "a server",
-            showing: shownPlace.hostId === hostId && mirror(shownPair, shownPlace.dir, localDir) === remoteDir,
+            remotePath: mirror(shownPair, shownDir, localDir),
+            hostLabel: host?.label ?? "the server",
+            showing: mirror(shownPair, shownDir, localDir) === remoteDir,
             own: sameLocal(shownPair.root, localDir),
           }
         : null,
-    onGo: () => shownPair && shownPlace && localDir && go(shownPlace.hostId, mirror(shownPair, shownPlace.dir, localDir), shownPlace.dir),
+    onGo: () => shownPair && shownDir && hostId && localDir && go(hostId, mirror(shownPair, shownDir, localDir), shownDir),
     canPairWith: host && isConnected && remoteDir ? remoteDir : null,
     onPair: () => {
       if (!localDir || !host || !remoteDir) return;
       void pairWith(localDir, host.id, remoteDir);
     },
     onUnpair: () => {
-      if (shownPair && shownPlace) void pairWith(shownPair.root, shownPlace.hostId, null);
+      if (shownPair && hostId) void pairWith(shownPair.root, hostId, null);
     },
   };
 
