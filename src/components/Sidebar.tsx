@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import {
   ArrowDownToLine,
   ArrowLeftRight,
@@ -17,7 +17,6 @@ import { useEditor } from "../editor/EditorProvider";
 import { useUpdates } from "../update/UpdateProvider";
 import { useSpin } from "../ui/useSpin";
 import { useActivity, type Activity } from "../state/activity";
-import { AboutDialog } from "./AboutDialog";
 
 /** A push or transfer still running on that page: a ring that fills (or spins until there's a
  *  measure), with what it's doing on hover. */
@@ -42,7 +41,7 @@ function ActivityRing({ activity }: { activity: Activity }) {
   );
 }
 
-export type Page = "sync" | "sftp" | "hosts" | "terminal" | "editor" | "settings";
+export type Page = "sync" | "sftp" | "hosts" | "terminal" | "editor" | "about" | "settings";
 
 /** Where the update button's sparks twinkle (across its width), when, and how big. */
 const SPARKS = [
@@ -76,7 +75,6 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
   const updates = useUpdates();
   const checkSpin = useSpin(updates.checking);
   const busy = useActivity();
-  const [about, setAbout] = useState(false);
   return (
     <nav className="sidebar" aria-label="Main">
       {ITEMS.map(({ page: target, label, Icon }) => (
@@ -106,9 +104,9 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
       <button
         type="button"
         className="nav-item nav-about"
-        aria-haspopup="dialog"
+        aria-current={page === "about" ? "page" : undefined}
         aria-label={collapsed ? "About" : undefined}
-        onClick={() => setAbout(true)}
+        onClick={() => onNavigate("about")}
         data-tip={collapsed ? "About" : undefined}
       >
         <Info size={18} strokeWidth={1.75} />
@@ -177,8 +175,6 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
           {collapsed ? <ChevronsRight size={16} strokeWidth={1.75} /> : <ChevronsLeft size={16} strokeWidth={1.75} />}
         </button>
       </div>
-
-      {about && <AboutDialog onClose={() => setAbout(false)} />}
     </nav>
   );
 }

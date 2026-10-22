@@ -20,6 +20,7 @@ import { TerminalProvider } from "./terminal/TerminalProvider";
 import { TerminalPage } from "./terminal/TerminalPage";
 import { UpdateProvider } from "./update/UpdateProvider";
 import { SettingsPage } from "./settings/SettingsPage";
+import { AboutPage } from "./components/AboutPage";
 import type { ThemePref } from "./theme";
 import { remember, remembered } from "./lib/storage";
 import { BusyGuard } from "./window/BusyGuard";
@@ -96,6 +97,7 @@ function Workspace({ theme, onThemeChange }: { theme: ThemePref; onThemeChange: 
                 )}
                 {/* Settings reads everything fresh each time it opens. */}
                 {page === "settings" && <SettingsPage theme={theme} onThemeChange={onThemeChange} />}
+                {page === "about" && <AboutPage />}
               </div>
               <TerminalPage shown={overlay === "terminal"} />
               <EditorPage shown={overlay === "editor"} />

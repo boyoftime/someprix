@@ -4377,92 +4377,91 @@ label.gh-choice-title {
   cursor: progress;
 }
 
-/* About: the studio's logo over a sunrise, the app icon on the photo's edge, then the app. */
-.about-dialog {
+/* About fills the page: the sunrise across it, the studio's logo in the sky, and the app along
+   the foot, in white over the darker clouds (the same in either theme). */
+.about-page {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   overflow: hidden;
+  background: #1d2438;
+  color: #fff;
 }
 
-.about-dialog .dialog-hero {
-  position: relative;
-}
-
-.about-photo {
-  position: relative;
-  height: 212px;
-  overflow: hidden;
-  background: #2b3550;
-}
-
-.about-photo > img:first-child {
+.about-backdrop {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 60%;
+  object-position: 58% 62%;
+  animation: about-settle 1600ms var(--ease-out) both;
+}
+
+/* Darker toward the foot, where the words are. */
+.about-page::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 10, 20, 0) 50%, rgba(8, 10, 20, 0.5) 74%, rgba(8, 10, 20, 0.86) 100%);
+  content: "";
+  pointer-events: none;
+}
+
+.about-sky {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  padding-top: clamp(24px, 7vh, 72px);
 }
 
 .about-studio {
-  position: absolute;
-  top: 22px;
-  left: 50%;
-  width: 172px;
-  filter: drop-shadow(0 8px 16px rgba(8, 10, 24, 0.45));
-  transform: translateX(-50%);
-  animation: about-rise 560ms var(--ease-out) 90ms both;
+  align-self: flex-start;
+  width: clamp(190px, 24vw, 320px);
+  height: auto;
+  filter: drop-shadow(0 10px 22px rgba(8, 10, 24, 0.45));
+  animation: about-rise 700ms var(--ease-out) 150ms both;
+}
+
+.about-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px 40px;
+  padding: 0 clamp(24px, 4vw, 56px) 40px;
+}
+
+.about-app {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
 }
 
 .about-icon {
-  position: absolute;
-  bottom: -34px;
-  left: 50%;
-  display: grid;
-  place-items: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 22px;
-  background: var(--dialog);
-  box-shadow: 0 12px 26px -10px rgba(0, 0, 0, 0.55);
-  transform: translateX(-50%);
-}
-
-/* Close, floating on the photo. */
-.about-dialog .dialog-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 1;
-  border-radius: 50%;
-  background: rgba(10, 12, 22, 0.4);
-  color: #fff;
-  backdrop-filter: blur(8px);
-}
-
-.about-dialog .dialog-close:hover:not(:disabled) {
-  background: rgba(10, 12, 22, 0.6);
-  color: #fff;
-}
-
-.about-dialog .dialog-head {
-  justify-content: center;
-  padding: 46px 24px 0;
-}
-
-.about-dialog .dialog-head h2 {
   flex: none;
-  font-size: 22px;
-  letter-spacing: -0.02em;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.45));
 }
 
-.about-dialog .dialog-body {
-  padding: 8px 24px 22px;
+.about-app-text {
+  min-width: 0;
 }
 
-.about-body {
+.about-name {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
-  text-align: center;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: clamp(26px, 2.6vw, 34px);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
 }
 
 .about-version {
@@ -4470,11 +4469,14 @@ label.gh-choice-title {
   align-items: baseline;
   gap: 6px;
   padding: 4px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.12);
   font-size: 12.5px;
   font-weight: 650;
+  letter-spacing: 0;
+  text-shadow: none;
+  backdrop-filter: blur(10px);
 }
 
 .about-version-number {
@@ -4483,53 +4485,62 @@ label.gh-choice-title {
 }
 
 .about-tagline {
-  max-width: 36ch;
-  margin: 0;
-  color: var(--text-muted);
-  line-height: 1.55;
+  max-width: 44ch;
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14.5px;
+  line-height: 1.5;
   text-wrap: balance;
 }
 
 .about-maker {
   display: flex;
+  flex: none;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  margin-top: 4px;
-  padding: 12px 12px 12px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  text-align: left;
+  gap: 16px;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .about-maker strong {
-  color: var(--text);
-}
-
-.about-maker > span {
-  color: var(--text-muted);
+  color: #fff;
 }
 
 .about-github {
-  flex: none;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  backdrop-filter: blur(10px);
+}
+
+.about-github:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .about-credit {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  z-index: 1;
   margin: 0;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.45);
   font-size: 11.5px;
-  opacity: 0.8;
+}
+
+@keyframes about-settle {
+  from {
+    transform: scale(1.06);
+  }
 }
 
 @keyframes about-rise {
   from {
     opacity: 0;
-    transform: translate(-50%, 10px) scale(0.94);
+    transform: translateY(12px) scale(0.94);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .about-backdrop,
   .about-studio {
     animation: none;
   }
