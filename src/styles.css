@@ -644,6 +644,7 @@ button {
   background: var(--canvas);
 }
 
+/* Changes waiting to be pushed: a blue badge that glows softly, so it's seen at a glance. */
 .nav-badge {
   display: grid;
   place-items: center;
@@ -652,10 +653,34 @@ button {
   margin-left: auto;
   padding: 0 6px;
   border-radius: 10px;
-  background: var(--modified);
-  color: #1b1e2c;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 82%, #fff), var(--accent));
+  color: #fff;
   font-size: 11.5px;
   font-weight: 700;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent),
+    0 0 10px 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: badge-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes badge-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent),
+      0 0 8px 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent),
+      0 0 16px 3px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-badge {
+    animation: none;
+  }
 }
 
 /* ---------- Controls ---------- */
