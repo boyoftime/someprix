@@ -27,7 +27,9 @@ use crate::store::write_atomic;
 
 pub const CHANGES_EVENT: &str = "project://changes";
 
-/// Always skipped, on top of the project's own .gitignore.
+/// Never shown in Sync or pushed: version control, installed packages, system and editor scratch
+/// files. The project's .gitignore hides nothing here; what stays out of pushing is the user's
+/// call (Exclude from push).
 const DEFAULT_IGNORES: &[&str] = &[
     ".git/",
     "node_modules/",
@@ -65,6 +67,23 @@ pub struct ServerSig {
 
 /// What each pushed file looks like on the server, per destination ("host:folder").
 type ServerRecord = HashMap<String, HashMap<String, ServerSig>>;
+
+/// The baseline file's form since .gitignore stopped hiding files from Sync (version 2).
+const BASELINE_VERSION: u32 = 2;
+
+#[derive(Serialize)]
+struct BaselineOut<'a> {
+    version: u32,
+    files: &'a HashMap<String, Sig>,
+}
+
+/// A saved baseline: the current form, or the plain map saved before version 2.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SavedBaseline {
+    Versioned { files: HashMap<String, Sig> },
+    Plain(HashMap<String, Sig>),
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -127,7 +146,7 @@ pub fn open(
         .watch(root, RecursiveMode::Recursive)
         .map_err(|e| format!("Watch failed: {e}"))?;
 
-    let saved: Option<HashMap<String, Sig>> = fs::read_to_string(&baseline_file)
+    let saved: Option<SavedBaseline> = fs::read_to_string(&baseline_file)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok());
     let server_file = baseline_file.with_extension("server.json");
@@ -149,8 +168,14 @@ pub fn open(
         _watcher: watcher,
     };
     match saved {
-        Some(baseline) => {
-            project.baseline = baseline;
+        Some(SavedBaseline::Versioned { files }) => {
+            project.baseline = files;
+            project.rescan();
+        }
+        Some(SavedBaseline::Plain(files)) => {
+            project.baseline = files;
+            project.adopt_gitignored();
+            project.save_baseline();
             project.rescan();
         }
         None => {
@@ -217,10 +242,6 @@ fn spawn_settler(
 
 fn build_ignore(root: &Path) -> Gitignore {
     let mut builder = GitignoreBuilder::new(root);
-    let gitignore = root.join(".gitignore");
-    if gitignore.is_file() {
-        let _ = builder.add(gitignore);
-    }
     for line in DEFAULT_IGNORES {
         let _ = builder.add_line(None, line);
     }
@@ -287,10 +308,36 @@ impl Project {
             && self.ignore.matched_path_or_any_parents(path, is_dir).is_ignore()
     }
 
-    /// Whether the project file `rel` is ignored (by .gitignore or the built-in rules), whether or
-    /// not it still exists. Ignored files are never changes: not new, not changed, not deleted.
+    /// Whether the project file `rel` is one Sync never shows (see DEFAULT_IGNORES), whether or
+    /// not it still exists. Those are never changes: not new, not changed, not deleted.
     fn ignores(&self, rel: &str) -> bool {
         self.ignore.matched_path_or_any_parents(self.root.join(rel), false).is_ignore()
+    }
+
+    /// Brings a baseline saved while .gitignore still hid files from Sync up to date. The files it
+    /// hid count as already on the server, as they are now (like a folder opened the first time),
+    /// rather than all turning up as new, or as changed from a record made before they were hidden.
+    fn adopt_gitignored(&mut self) {
+        let file = self.root.join(".gitignore");
+        if !file.is_file() {
+            return;
+        }
+        let mut builder = GitignoreBuilder::new(&self.root);
+        let _ = builder.add(file);
+        let Ok(gitignore) = builder.build() else {
+            return;
+        };
+        let root = self.root.clone();
+        let hid = |rel: &str| gitignore.matched_path_or_any_parents(root.join(rel), false).is_ignore();
+        let excluded = &self.excluded;
+        self.baseline.retain(|rel, _| !hid(rel) || is_excluded(excluded, rel));
+        for rel in self.walk(&self.root) {
+            if hid(&rel) {
+                if let Ok(sig) = signature(&self.root.join(&rel)) {
+                    self.baseline.insert(rel, sig);
+                }
+            }
+        }
     }
 
     /// Every tracked file under `dir` (absolute), as project-relative paths.
@@ -322,7 +369,11 @@ impl Project {
     }
 
     pub fn save_baseline(&self) {
-        if let Ok(text) = serde_json::to_string(&self.baseline) {
+        let saved = BaselineOut {
+            version: BASELINE_VERSION,
+            files: &self.baseline,
+        };
+        if let Ok(text) = serde_json::to_string(&saved) {
             let _ = write_atomic(&self.baseline_file, text.as_bytes());
         }
     }
@@ -378,8 +429,7 @@ impl Project {
         let gone: Vec<String> = self
             .baseline
             .keys()
-            // Excluded files aren't deleted, just left out; nor are files ignored since they were
-            // last pushed (a .env added to .gitignore is still there).
+            // Excluded files aren't deleted, just left out; nor are files Sync never shows.
             .filter(|rel| !present_set.contains(rel) && !is_excluded(&self.excluded, rel) && !self.ignores(rel))
             .cloned()
             .collect();
@@ -393,12 +443,6 @@ impl Project {
 
     /// Re-checks the given absolute paths (files or folders) after the watcher saw them change.
     pub fn refresh(&mut self, paths: &[PathBuf]) {
-        // A changed .gitignore changes what's tracked: read it again and re-check everything.
-        if paths.iter().any(|path| rel_path(&self.root, path).as_deref() == Some(".gitignore")) {
-            self.ignore = build_ignore(&self.root);
-            self.rescan();
-            return;
-        }
         let mut touched = false;
         for path in paths {
             let Some(rel) = rel_path(&self.root, path) else {

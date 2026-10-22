@@ -46,7 +46,7 @@
   <img src="docs/screenshots/sync-light.png" alt="Sync: changed files marked, ready to push" />
 </picture>
 
-Open your project folder and Someprix watches it. Every file you save, add or delete is marked straight away: amber for changed, green for new, red for deleted. Pick your server and the folder to deploy to once, then press **Push to server** and only those files go up. You can also push a single file or folder from the right-click menu.
+Open your project folder and Someprix watches it. Every file you save, add or delete is marked straight away: amber for changed, green for new, red for deleted. Pick your server and the folder to deploy to once, then press **Push to server** and only those files go up. You can also push a single file or folder from the right-click menu. Every file shows, including the ones your .gitignore lists: right-click anything you never want on the server and choose **Exclude from push**.
 
 Pushes are safe to stop and safe to take back:
 
