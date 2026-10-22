@@ -25,8 +25,10 @@ export function Dialog({ title, onClose, children, footer, locked = false, width
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // Only the one showing: a page waiting in the background keeps its dialog.
-      if (event.key === "Escape" && !locked && panel.current?.getClientRects().length) onClose();
+      // Only the one showing: a page waiting in the background (or under the terminal or
+      // editor, where Escape belongs to them) keeps its dialog.
+      const panelNow = panel.current;
+      if (event.key === "Escape" && !locked && panelNow?.getClientRects().length && !panelNow.closest("[inert]")) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

@@ -520,15 +520,97 @@ button {
   margin-top: 6px;
 }
 
-/* Shows when GitHub has a newer version; sits just above the version line. */
+/* Shows when GitHub has a newer version, just above the version line: it glows, a light sweeps
+   across it, and sparks twinkle over it, so it's hard to miss. Still, without the motion, for
+   people who turn animations off. */
 .sidebar-update {
+  position: relative;
   margin-top: auto;
-  background: var(--accent-soft);
+  background: linear-gradient(
+      110deg,
+      transparent 30%,
+      color-mix(in srgb, var(--accent) 32%, transparent) 48%,
+      transparent 66%
+    )
+    0 0 / 260% 100% no-repeat,
+    var(--accent-soft);
   color: var(--accent);
+  animation:
+    update-glow 2.6s ease-in-out infinite,
+    update-sweep 3.4s linear infinite;
 }
 
 .sidebar-update:hover {
-  background: var(--selected);
+  filter: brightness(1.12);
+}
+
+@keyframes update-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+      0 0 10px -2px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent),
+      0 0 20px 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+}
+
+@keyframes update-sweep {
+  from {
+    background-position: 130% 0, 0 0;
+  }
+  to {
+    background-position: -130% 0, 0 0;
+  }
+}
+
+.update-sparks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.spark {
+  position: absolute;
+  top: var(--y);
+  left: var(--x);
+  width: var(--s);
+  height: var(--s);
+  opacity: 0;
+  fill: color-mix(in srgb, var(--accent) 40%, #fff);
+  filter: drop-shadow(0 0 3px var(--accent));
+  transform: translate(-50%, -50%) scale(0.2);
+  animation: spark-twinkle 2.2s ease-in-out var(--d) infinite;
+}
+
+@keyframes spark-twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2) rotate(0deg);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-50%, -62%) scale(1) rotate(45deg);
+  }
+  75% {
+    opacity: 0;
+    transform: translate(-50%, -80%) scale(0.45) rotate(90deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-update {
+    animation: none;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+
+  .update-sparks {
+    display: none;
+  }
 }
 
 .sidebar-update + .sidebar-foot {
@@ -3473,7 +3555,11 @@ input::-ms-clear {
 /* ---------- Editor ---------- */
 
 /* The page behind the editor: kept mounted (and inert) while the editor shows. */
+/* The pages get a layer of their own, so a page's dialogs (a push, say) stay under the terminal
+   and editor when those cover it, and show again with the page. */
 .page-host {
+  position: relative;
+  z-index: 0;
   height: 100%;
 }
 

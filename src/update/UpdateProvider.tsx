@@ -52,6 +52,10 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
   const { notify } = useAppData();
   const editor = useEditor();
   const [found, setFound] = useState<Update | null>(null);
+  // Lets a development build show the update button without a real release.
+  useEffect(() => {
+    if (import.meta.env.DEV) Object.assign(window, { __someprixFakeUpdate: (version: string) => setFound({ version } as Update) });
+  }, []);
   const [checking, setChecking] = useState(false);
   const [step, setStep] = useState<Step>("closed");
   const [progress, setProgress] = useState<{ done: number; total: number | null }>({ done: 0, total: null });

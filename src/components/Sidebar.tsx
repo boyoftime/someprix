@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import {
   ArrowDownToLine,
   ArrowLeftRight,
@@ -40,6 +41,15 @@ function ActivityRing({ activity }: { activity: Activity }) {
 }
 
 export type Page = "sync" | "sftp" | "hosts" | "terminal" | "editor" | "settings";
+
+/** Where the update button's sparks twinkle (across its width), when, and how big. */
+const SPARKS = [
+  { x: "10%", y: "22%", delay: "0s", size: "11px" },
+  { x: "36%", y: "80%", delay: "0.7s", size: "8px" },
+  { x: "60%", y: "16%", delay: "1.3s", size: "12px" },
+  { x: "82%", y: "74%", delay: "0.35s", size: "9px" },
+  { x: "93%", y: "26%", delay: "1.8s", size: "7px" },
+];
 
 const ITEMS: { page: Page; label: string; Icon: typeof Server }[] = [
   { page: "sync", label: "Sync", Icon: ArrowLeftRight },
@@ -112,6 +122,18 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
         >
           <ArrowDownToLine size={18} strokeWidth={1.75} />
           <span className="nav-label">Update to {updates.available}</span>
+          <span className="update-sparks" aria-hidden="true">
+            {SPARKS.map((spark, i) => (
+              <svg
+                key={i}
+                className="spark"
+                viewBox="0 0 12 12"
+                style={{ "--x": spark.x, "--y": spark.y, "--d": spark.delay, "--s": spark.size } as CSSProperties}
+              >
+                <path d="M6 0C6.5 3.6 8.4 5.5 12 6 8.4 6.5 6.5 8.4 6 12 5.5 8.4 3.6 6.5 0 6 3.6 5.5 5.5 3.6 6 0Z" />
+              </svg>
+            ))}
+          </span>
         </button>
       )}
 
