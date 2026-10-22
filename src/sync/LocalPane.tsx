@@ -121,7 +121,10 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
     const row = foot.current;
     const pane = row?.closest<HTMLElement>(".pane");
     if (!row || !pane) return;
+    const resized = new ResizeObserver(() => update());
     const update = () => {
+      // Each item too: widths change without the content changing (when the font arrives, say).
+      for (const item of [...row.children]) resized.observe(item);
       if (!row.hasAttribute("data-compact")) {
         fullWidth.current = rowWidth(row);
         footWidthSink.current(fullWidth.current);
@@ -129,7 +132,6 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
       setCompact(pane.clientWidth < fullWidth.current);
     };
     update();
-    const resized = new ResizeObserver(update);
     resized.observe(pane);
     const changed = new MutationObserver(update);
     changed.observe(row, { childList: true, subtree: true, characterData: true });

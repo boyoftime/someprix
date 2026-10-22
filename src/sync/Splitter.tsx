@@ -9,7 +9,13 @@ export function rowWidth(row: HTMLElement) {
   const style = getComputedStyle(row);
   const gap = parseFloat(style.columnGap) || 0;
   const items = [...row.children] as HTMLElement[];
-  const widths = items.filter((item) => !item.classList.contains("spacer")).reduce((sum, item) => sum + item.getBoundingClientRect().width, 0);
+  // Margins count too (the excluded count sits a little apart from the change counts).
+  const widths = items
+    .filter((item) => !item.classList.contains("spacer"))
+    .reduce((sum, item) => {
+      const margins = getComputedStyle(item);
+      return sum + item.getBoundingClientRect().width + (parseFloat(margins.marginLeft) || 0) + (parseFloat(margins.marginRight) || 0);
+    }, 0);
   return Math.ceil(widths + gap * Math.max(0, items.length - 1) + (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0));
 }
 
