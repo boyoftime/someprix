@@ -134,7 +134,7 @@ chmod +x Someprix_amd64.AppImage
 ./Someprix_amd64.AppImage
 ```
 
-After that, Someprix keeps itself current. When a new version is out, an **Update** button appears at the bottom of the sidebar; you can also check any time with the refresh button at the foot of the sidebar. **About** (just above Settings) shows the version you have.
+After that, Someprix keeps itself current. When a new version is out, an **Update** button appears at the bottom of the sidebar; you can also check any time with the refresh button next to the version number, just above **About**.
 
 ## Keyboard shortcuts
 

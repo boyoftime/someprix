@@ -510,25 +510,9 @@ button {
   background: var(--sidebar);
 }
 
-/* Settings sits at the bottom of the sidebar, above the version line. */
-.nav-settings {
-  margin-top: auto;
-}
-
-.nav-settings ~ .sidebar-update {
-  margin-top: 0;
-}
-
-/* About sits just above Settings, at the foot of the menu. */
-.nav-about {
-  margin-top: auto;
-}
-
-.nav-about + .nav-settings {
-  margin-top: 0;
-}
-
-.nav-settings + .sidebar-foot {
+/* The foot of the menu: the update (when there is one), the version line with its buttons,
+   then About and Settings. */
+.sidebar-foot + .nav-about {
   margin-top: 6px;
 }
 

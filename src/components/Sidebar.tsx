@@ -12,6 +12,7 @@ import {
   Settings,
   SquareTerminal,
 } from "lucide-react";
+import { version } from "../../package.json";
 import { useEditor } from "../editor/EditorProvider";
 import { useUpdates } from "../update/UpdateProvider";
 import { useSpin } from "../ui/useSpin";
@@ -100,30 +101,6 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
         </button>
       ))}
 
-      <button
-        type="button"
-        className="nav-item nav-about"
-        aria-current={page === "about" ? "page" : undefined}
-        aria-label={collapsed ? "About" : undefined}
-        onClick={() => onNavigate("about")}
-        data-tip={collapsed ? "About" : undefined}
-      >
-        <Info size={18} strokeWidth={1.75} />
-        <span className="nav-label">About</span>
-      </button>
-
-      <button
-        type="button"
-        className="nav-item nav-settings"
-        aria-current={page === "settings" ? "page" : undefined}
-        aria-label={collapsed ? "Settings" : undefined}
-        onClick={() => onNavigate("settings")}
-        data-tip={collapsed ? "Settings" : undefined}
-      >
-        <Settings size={18} strokeWidth={1.75} />
-        <span className="nav-label">Settings</span>
-      </button>
-
       {updates.available && (
         <button
           type="button"
@@ -150,6 +127,7 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
       )}
 
       <div className="sidebar-foot">
+        <span className="nav-label">Version {version}</span>
         <button
           type="button"
           className="icon-btn sidebar-check"
@@ -173,6 +151,30 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
           {collapsed ? <ChevronsRight size={16} strokeWidth={1.75} /> : <ChevronsLeft size={16} strokeWidth={1.75} />}
         </button>
       </div>
+
+      <button
+        type="button"
+        className="nav-item nav-about"
+        aria-current={page === "about" ? "page" : undefined}
+        aria-label={collapsed ? "About" : undefined}
+        onClick={() => onNavigate("about")}
+        data-tip={collapsed ? "About" : undefined}
+      >
+        <Info size={18} strokeWidth={1.75} />
+        <span className="nav-label">About</span>
+      </button>
+
+      <button
+        type="button"
+        className="nav-item nav-settings"
+        aria-current={page === "settings" ? "page" : undefined}
+        aria-label={collapsed ? "Settings" : undefined}
+        onClick={() => onNavigate("settings")}
+        data-tip={collapsed ? "Settings" : undefined}
+      >
+        <Settings size={18} strokeWidth={1.75} />
+        <span className="nav-label">Settings</span>
+      </button>
     </nav>
   );
 }
