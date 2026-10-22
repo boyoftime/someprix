@@ -49,6 +49,9 @@ pub struct ProjectLink {
     /// Project paths (files or folders) the user excluded from pushing.
     #[serde(default)]
     pub excluded: Vec<String>,
+    /// Folders excluded at first (.git, node_modules) the user included in pushing.
+    #[serde(default)]
+    pub included: Vec<String>,
     /// Whether pushes keep a backup on the server; None follows the setting for all projects.
     #[serde(default)]
     pub backup: Option<bool>,

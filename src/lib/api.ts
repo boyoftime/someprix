@@ -314,6 +314,9 @@ export const api = {
 
   onChanges: (handler: (changes: Change[]) => void): Promise<UnlistenFn> =>
     listen<Change[]>("project://changes", (event) => handler(event.payload)),
+  /** The excluded list, when a .git or node_modules folder comes or goes (they start out excluded). */
+  onExcluded: (handler: (excluded: string[]) => void): Promise<UnlistenFn> =>
+    listen<string[]>("project://excluded", (event) => handler(event.payload)),
   onPushProgress: (handler: (progress: PushProgress) => void): Promise<UnlistenFn> =>
     listen<PushProgress>("project://push-progress", (event) => handler(event.payload)),
 };

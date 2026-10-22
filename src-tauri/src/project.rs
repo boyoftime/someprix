@@ -6,7 +6,7 @@
 //! it. The baseline is stored on disk, so edits made while the app is closed still show up.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs, io,
     io::Read,
     path::{Path, PathBuf},
@@ -27,10 +27,18 @@ use crate::store::write_atomic;
 
 pub const CHANGES_EVENT: &str = "project://changes";
 
-/// Never shown in Sync or pushed: version control, installed packages, system and editor scratch
-/// files. The project's .gitignore hides nothing here; what stays out of pushing is the user's
-/// call (Exclude from push).
-const DEFAULT_IGNORES: &[&str] = &[
+/// Never shown in Sync: Someprix's own copy of a server file on its way in (see
+/// project_take_server). Everything else shows, whatever .gitignore says; what stays out of
+/// pushing is the user's call (Exclude from push).
+const HIDDEN: &[&str] = &["*.someprix-part"];
+
+/// Folders that start out excluded from pushing, wherever they are in the project; the user can
+/// include them. A .git folder on a web server gives the code and its history away, and
+/// node_modules is installed on the server instead (and is huge).
+const EXCLUDED_AT_FIRST: &[&str] = &[".git", "node_modules"];
+
+/// What versions before 1.10.1 hid from Sync on top of .gitignore (see adopt_hidden).
+const HIDDEN_BEFORE: &[&str] = &[
     ".git/",
     "node_modules/",
     ".DS_Store",
@@ -41,9 +49,9 @@ const DEFAULT_IGNORES: &[&str] = &[
     "*~",
     "*___jb_tmp___",
     "*___jb_old___",
-    // A server copy on its way in (see project_take_server).
-    "*.someprix-part",
 ];
+
+pub const EXCLUDED_EVENT: &str = "project://excluded";
 
 /// How long the folder has to be quiet before changes are re-checked (editors often write a
 /// file in several steps).
@@ -118,6 +126,12 @@ pub struct Project {
     changes: BTreeMap<String, ChangeKind>,
     /// Paths the user excluded from pushing: never counted as changes, never pushed.
     excluded: Vec<String>,
+    /// Folders excluded at first (EXCLUDED_AT_FIRST) that the user included in pushing.
+    included: Vec<String>,
+    /// The folders excluded at first that are in the project now.
+    at_first: BTreeSet<String>,
+    /// `at_first` changed since the list was last sent (see take_excluded_change).
+    excluded_changed: bool,
     _watcher: RecommendedWatcher,
 }
 
@@ -133,6 +147,7 @@ pub fn open(
     root: &Path,
     baseline_file: PathBuf,
     excluded: Vec<String>,
+    included: Vec<String>,
 ) -> Result<(), String> {
     if !root.is_dir() {
         return Err(format!("Not a folder: {}", root.display()));
@@ -165,18 +180,17 @@ pub fn open(
         server_file,
         changes: BTreeMap::new(),
         excluded,
+        included,
+        at_first: BTreeSet::new(),
+        excluded_changed: false,
         _watcher: watcher,
     };
     match saved {
-        Some(SavedBaseline::Versioned { files }) => {
-            project.baseline = files;
-            project.rescan();
-        }
+        Some(SavedBaseline::Versioned { files }) => project.baseline = files,
         Some(SavedBaseline::Plain(files)) => {
             project.baseline = files;
-            project.adopt_gitignored();
+            project.adopt_hidden();
             project.save_baseline();
-            project.rescan();
         }
         None => {
             // A folder seen for the first time: everything in it counts as already on the server.
@@ -184,6 +198,7 @@ pub fn open(
             project.save_baseline();
         }
     }
+    project.rescan();
 
     *shared.lock().unwrap() = Some(project);
     spawn_settler(app.clone(), shared.clone(), generation, rx);
@@ -219,7 +234,7 @@ fn spawn_settler(
                         continue;
                     }
                     let paths: Vec<PathBuf> = pending.drain().collect();
-                    let changes = {
+                    let (changes, excluded) = {
                         let mut guard = shared.lock().unwrap();
                         let Some(project) = guard.as_mut().filter(|p| p.generation == generation) else {
                             return;
@@ -229,8 +244,12 @@ fn spawn_settler(
                         } else {
                             project.refresh(&paths);
                         }
-                        project.changes()
+                        (project.changes(), project.take_excluded_change())
                     };
+                    // A node_modules that came (or went) is excluded (or not) before the tree shows it.
+                    if let Some(excluded) = excluded {
+                        let _ = app.emit(EXCLUDED_EVENT, excluded);
+                    }
                     let _ = app.emit(CHANGES_EVENT, changes);
                 }
                 // The project was closed or replaced, which drops the watcher.
@@ -242,7 +261,7 @@ fn spawn_settler(
 
 fn build_ignore(root: &Path) -> Gitignore {
     let mut builder = GitignoreBuilder::new(root);
-    for line in DEFAULT_IGNORES {
+    for line in HIDDEN {
         let _ = builder.add_line(None, line);
     }
     builder.build().unwrap_or_else(|_| Gitignore::empty())
@@ -291,15 +310,80 @@ fn is_excluded(excluded: &[String], rel: &str) -> bool {
         .any(|ex| rel == ex || rel.strip_prefix(ex.as_str()).is_some_and(|rest| rest.starts_with('/')))
 }
 
+/// The folder (or file) excluded at first that `rel` is, or is in, unless the user included it.
+fn excluded_at_first<'a>(rel: &'a str, included: &[String]) -> Option<&'a str> {
+    let mut end = 0;
+    for part in rel.split('/') {
+        end += part.len();
+        let folder = &rel[..end];
+        if EXCLUDED_AT_FIRST.contains(&part) && !included.iter().any(|i| i == folder) {
+            return Some(folder);
+        }
+        end += 1;
+    }
+    None
+}
+
+/// Whether `rel` stays out of pushing: the user excluded it, or it's excluded at first.
+fn left_out(excluded: &[String], included: &[String], rel: &str) -> bool {
+    is_excluded(excluded, rel) || excluded_at_first(rel, included).is_some()
+}
+
 impl Project {
-    pub fn excluded(&self) -> &[String] {
-        &self.excluded
+    /// Everything excluded from pushing: what the user excluded, and the folders excluded at first
+    /// that are in the project now (not counting those inside a folder the user excluded).
+    pub fn excluded(&self) -> Vec<String> {
+        let mut all: BTreeSet<String> = self.at_first.iter().filter(|f| !is_excluded(&self.excluded, f)).cloned().collect();
+        all.extend(self.excluded.iter().cloned());
+        all.into_iter().collect()
     }
 
-    /// Replaces what's excluded from pushing and re-checks the folder against it.
-    pub fn set_excluded(&mut self, excluded: Vec<String>) {
-        self.excluded = excluded;
+    /// What the user chose, to keep: paths excluded, and folders excluded at first included.
+    pub fn exclusions(&self) -> (Vec<String>, Vec<String>) {
+        (self.excluded.clone(), self.included.clone())
+    }
+
+    /// Excludes paths from pushing, or with `exclude` false includes them again, then re-checks
+    /// the folder. A folder covers everything inside it.
+    pub fn exclude(&mut self, paths: &[String], exclude: bool) {
+        let inside = |item: &str, folder: &str| item == folder || item.strip_prefix(folder).is_some_and(|rest| rest.starts_with('/'));
+        for path in paths.iter().map(|p| p.trim_matches('/')).filter(|p| !p.is_empty()) {
+            if exclude {
+                // An included .git or node_modules goes back to how it started.
+                self.included.retain(|item| item != path);
+                // Already covered (by an excluded folder, or one excluded at first): nothing to add.
+                if excluded_at_first(path, &self.included).is_some() || self.excluded.iter().any(|item| inside(path, item)) {
+                    continue;
+                }
+                // A folder takes over anything excluded inside it.
+                self.excluded.retain(|item| !inside(item, path));
+                self.excluded.push(path.to_string());
+            } else {
+                self.excluded.retain(|item| item != path);
+                if excluded_at_first(path, &self.included) == Some(path) {
+                    self.included.push(path.to_string());
+                }
+            }
+        }
+        self.excluded.sort();
+        self.included.sort();
         self.rescan();
+    }
+
+    /// The full excluded list, if the folders excluded at first changed since it was last taken.
+    pub fn take_excluded_change(&mut self) -> Option<Vec<String>> {
+        std::mem::take(&mut self.excluded_changed).then(|| self.excluded())
+    }
+
+    fn is_left_out(&self, rel: &str) -> bool {
+        left_out(&self.excluded, &self.included, rel)
+    }
+
+    fn note_at_first(&mut self, found: BTreeSet<String>) {
+        if found != self.at_first {
+            self.at_first = found;
+            self.excluded_changed = true;
+        }
     }
 
     pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
@@ -308,30 +392,33 @@ impl Project {
             && self.ignore.matched_path_or_any_parents(path, is_dir).is_ignore()
     }
 
-    /// Whether the project file `rel` is one Sync never shows (see DEFAULT_IGNORES), whether or
-    /// not it still exists. Those are never changes: not new, not changed, not deleted.
+    /// Whether the project file `rel` is one Sync never shows (see HIDDEN), whether or not it
+    /// still exists. Those are never changes: not new, not changed, not deleted.
     fn ignores(&self, rel: &str) -> bool {
         self.ignore.matched_path_or_any_parents(self.root.join(rel), false).is_ignore()
     }
 
-    /// Brings a baseline saved while .gitignore still hid files from Sync up to date. The files it
-    /// hid count as already on the server, as they are now (like a folder opened the first time),
-    /// rather than all turning up as new, or as changed from a record made before they were hidden.
-    fn adopt_gitignored(&mut self) {
-        let file = self.root.join(".gitignore");
-        if !file.is_file() {
-            return;
-        }
+    /// Brings a baseline saved by a version that hid files from Sync (by .gitignore, and see
+    /// HIDDEN_BEFORE) up to date. The files it hid count as already on the server, as they are
+    /// now (like a folder opened the first time), rather than all turning up as new, or as
+    /// changed from a record made before they were hidden.
+    fn adopt_hidden(&mut self) {
         let mut builder = GitignoreBuilder::new(&self.root);
-        let _ = builder.add(file);
-        let Ok(gitignore) = builder.build() else {
+        let gitignore = self.root.join(".gitignore");
+        if gitignore.is_file() {
+            let _ = builder.add(gitignore);
+        }
+        for line in HIDDEN_BEFORE {
+            let _ = builder.add_line(None, line);
+        }
+        let Ok(hidden) = builder.build() else {
             return;
         };
         let root = self.root.clone();
-        let hid = |rel: &str| gitignore.matched_path_or_any_parents(root.join(rel), false).is_ignore();
-        let excluded = &self.excluded;
-        self.baseline.retain(|rel, _| !hid(rel) || is_excluded(excluded, rel));
-        for rel in self.walk(&self.root) {
+        let hid = |rel: &str| hidden.matched_path_or_any_parents(root.join(rel), false).is_ignore();
+        let (excluded, included) = (&self.excluded, &self.included);
+        self.baseline.retain(|rel, _| !hid(rel) || left_out(excluded, included, rel));
+        for rel in self.walk(&self.root).0 {
             if hid(&rel) {
                 if let Ok(sig) = signature(&self.root.join(&rel)) {
                     self.baseline.insert(rel, sig);
@@ -340,29 +427,54 @@ impl Project {
         }
     }
 
-    /// Every tracked file under `dir` (absolute), as project-relative paths.
-    fn walk(&self, dir: &Path) -> Vec<String> {
+    /// Every tracked file under `dir` (absolute), as project-relative paths, and the folders
+    /// excluded at first met on the way (not gone into).
+    fn walk(&self, dir: &Path) -> (Vec<String>, Vec<String>) {
         let ignore = self.ignore.clone();
         let root = self.root.clone();
         let excluded = self.excluded.clone();
-        ignore::WalkBuilder::new(dir)
+        let included = self.included.clone();
+        let met = Arc::new(Mutex::new(Vec::new()));
+        let noting = met.clone();
+        let files = ignore::WalkBuilder::new(dir)
             .standard_filters(false)
             .follow_links(false)
             .filter_entry(move |entry| {
+                if entry.path() == root {
+                    return true;
+                }
                 let is_dir = entry.file_type().is_some_and(|t| t.is_dir());
-                entry.path() == root
-                    || (!ignore.matched_path_or_any_parents(entry.path(), is_dir).is_ignore()
-                        && !rel_path(&root, entry.path()).is_some_and(|rel| is_excluded(&excluded, &rel)))
+                if ignore.matched_path_or_any_parents(entry.path(), is_dir).is_ignore() {
+                    return false;
+                }
+                let Some(rel) = rel_path(&root, entry.path()) else {
+                    return true;
+                };
+                if is_excluded(&excluded, &rel) {
+                    return false;
+                }
+                match excluded_at_first(&rel, &included) {
+                    Some(folder) => {
+                        if folder.len() == rel.len() {
+                            noting.lock().unwrap().push(rel.clone());
+                        }
+                        false
+                    }
+                    None => true,
+                }
             })
             .build()
             .filter_map(Result::ok)
             .filter(|entry| entry.file_type().is_some_and(|t| t.is_file()))
             .filter_map(|entry| rel_path(&self.root, entry.path()))
-            .collect()
+            .collect();
+        let met = std::mem::take(&mut *met.lock().unwrap());
+        (files, met)
     }
 
     fn snapshot(&self) -> HashMap<String, Sig> {
         self.walk(&self.root)
+            .0
             .into_iter()
             .filter_map(|rel| Some((rel.clone(), signature(&self.root.join(&rel)).ok()?)))
             .collect()
@@ -420,7 +532,8 @@ impl Project {
     /// Re-checks the whole folder against the baseline.
     pub fn rescan(&mut self) {
         self.changes.clear();
-        let present = self.walk(&self.root);
+        let (present, met) = self.walk(&self.root);
+        self.note_at_first(met.into_iter().collect());
         let present_set: HashSet<&String> = present.iter().collect();
         let mut touched = false;
         for rel in &present {
@@ -430,7 +543,7 @@ impl Project {
             .baseline
             .keys()
             // Excluded files aren't deleted, just left out; nor are files Sync never shows.
-            .filter(|rel| !present_set.contains(rel) && !is_excluded(&self.excluded, rel) && !self.ignores(rel))
+            .filter(|rel| !present_set.contains(rel) && !self.is_left_out(rel) && !self.ignores(rel))
             .cloned()
             .collect();
         for rel in gone {
@@ -444,16 +557,25 @@ impl Project {
     /// Re-checks the given absolute paths (files or folders) after the watcher saw them change.
     pub fn refresh(&mut self, paths: &[PathBuf]) {
         let mut touched = false;
+        // Folders excluded at first that something happened in (or to): they may have come or gone.
+        let mut noted: BTreeSet<String> = BTreeSet::new();
         for path in paths {
             let Some(rel) = rel_path(&self.root, path) else {
                 continue;
             };
+            if !is_excluded(&self.excluded, &rel) {
+                if let Some(folder) = excluded_at_first(&rel, &self.included) {
+                    noted.insert(folder.to_string());
+                }
+            }
             let is_dir = path.is_dir();
-            if self.is_ignored(path, is_dir) || is_excluded(&self.excluded, &rel) {
+            if self.is_ignored(path, is_dir) || self.is_left_out(&rel) {
                 continue;
             }
             if is_dir {
-                for file in self.walk(path) {
+                let (files, met) = self.walk(path);
+                noted.extend(met);
+                for file in files {
                     touched |= self.check(&file);
                 }
             } else {
@@ -472,6 +594,10 @@ impl Project {
                 touched |= self.check(&known);
             }
         }
+        let mut at_first = self.at_first.clone();
+        at_first.extend(noted);
+        at_first.retain(|folder| self.root.join(folder).exists());
+        self.note_at_first(at_first);
         if touched {
             self.save_baseline();
         }
@@ -480,7 +606,7 @@ impl Project {
     /// Updates the change state of one file. Returns true if the baseline was touched (a file
     /// was re-saved with identical content, so only its modified time moved).
     fn check(&mut self, rel: &str) -> bool {
-        if is_excluded(&self.excluded, rel) || self.ignores(rel) {
+        if self.is_left_out(rel) || self.ignores(rel) {
             self.changes.remove(rel);
             return false;
         }
@@ -542,7 +668,7 @@ impl Project {
             None => {
                 let mut fresh = self.snapshot();
                 for (rel, sig) in &self.baseline {
-                    if is_excluded(&self.excluded, rel) {
+                    if self.is_left_out(rel) {
                         fresh.entry(rel.clone()).or_insert(*sig);
                     }
                 }

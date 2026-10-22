@@ -138,7 +138,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       .catch((e) => notify(message(e), "error"))
       .finally(() => setProjectLoading(false));
     const unlisten = api.onChanges((changes) => setProject((p) => (p ? { ...p, changes } : p)));
-    return () => void unlisten.then((stop) => stop());
+    const unlistenExcluded = api.onExcluded((excluded) => setProject((p) => (p ? { ...p, excluded } : p)));
+    return () => {
+      void unlisten.then((stop) => stop());
+      void unlistenExcluded.then((stop) => stop());
+    };
   }, [notify]);
 
   const saveHost = useCallback(async (input: HostInput) => {
