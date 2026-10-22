@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { version } from "../../package.json";
 import { Logo } from "./Logo";
+import { NameShow } from "./NameShow";
 import { GithubMark } from "../github/GithubMark";
 import photo from "../assets/about-photo.jpg";
 import studio from "../assets/someless-tricks.png";
@@ -16,6 +17,7 @@ export function AboutPage() {
       <img className="about-backdrop" src={photo} alt="" draggable={false} />
       <div className="about-sky">
         <img className="about-studio" src={studio} alt="Someless Tricks" draggable={false} />
+        <NameShow />
       </div>
       <div className="about-panel">
         <div className="about-app">
