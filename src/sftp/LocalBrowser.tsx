@@ -169,6 +169,9 @@ export function LocalBrowser({
   const atDrives = isWindows && path === "";
   const up = path === null ? null : parentLocal(path);
 
+  // Sent somewhere from outside (goTo): the last request handled.
+  const wentTo = useRef(0);
+
   // Start where the user left off, else in their home folder.
   useEffect(() => {
     let saved: string | null = null;
@@ -178,7 +181,8 @@ export function LocalBrowser({
       // No storage: start at home.
     }
     if (saved !== null) setPath(saved);
-    else void api.localHome().then(setPath);
+    // (Unless sent somewhere meanwhile: see goTo.)
+    else void api.localHome().then((home) => wentTo.current === 0 && setPath(home));
   }, []);
 
   useEffect(() => {
@@ -204,7 +208,6 @@ export function LocalBrowser({
 
   useEffect(() => onPathChange?.(path), [path]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const wentTo = useRef(0);
   useEffect(() => {
     if (!goTo || goTo.seq === wentTo.current) return;
     wentTo.current = goTo.seq;

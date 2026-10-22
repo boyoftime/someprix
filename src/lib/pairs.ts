@@ -39,6 +39,16 @@ export function pairFor(pairs: ProjectPair[], path: string, hostId?: string | nu
   return best;
 }
 
+/** The project a local folder is in (or is), paired with a server or not. */
+export function projectAt(pairs: ProjectPair[], path: string): ProjectPair | null {
+  let best: ProjectPair | null = null;
+  for (const pair of pairs) {
+    if (inside(pair.root, path) === null) continue;
+    if (!best || comparable(pair.root).length > comparable(best.root).length) best = pair;
+  }
+  return best;
+}
+
 /** The project last open with a server (with `withFolder`, only if it has a folder there);
  *  without one on record, the most recently opened with a folder there. `pairs` comes most
  *  recently opened first. */

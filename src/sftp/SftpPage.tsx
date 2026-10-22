@@ -4,7 +4,7 @@ import { api, type LocalFsEntry, type ProjectPair, type PushProgress } from "../
 import { errorMessage, useAppData } from "../state/AppData";
 import { HostDialog } from "../hosts/HostDialog";
 import { ServerPane, type GoTo } from "../sync/ServerPane";
-import { lastOn, mirror, pairFor, sameLocal } from "../lib/pairs";
+import { lastOn, mirror, pairFor, projectAt, sameLocal } from "../lib/pairs";
 import { Splitter, useSplit } from "../sync/Splitter";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
 import { useFast } from "../ui/FastToggle";
@@ -107,20 +107,37 @@ export function SftpPage({ shown }: { shown: boolean }) {
     if (target !== remoteDirRef.current) go(onHost, target, dir);
   }, [localDir, pairs]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The local side, sent to a folder from here (switching servers).
+  // The local side, sent to a folder from here (switching servers, or following Sync).
   const [localGoTo, setLocalGoTo] = useState<{ path: string; seq: number } | null>(null);
+  const openLocal = (path: string) => setLocalGoTo({ path, seq: ++goSeq.current });
 
-  /** Another server picked here. In a project folder with no folder on that server, the left side
-   *  goes to the project last used with it, so both sides match. */
+  /** Another server picked here: as in Sync, the project last open with it comes back (else this
+   *  one, if it has a folder there; else the latest that has). Outside any project folder (say
+   *  Downloads), the left side stays put. */
   const chooseServer = (id: string) => {
     selectHost(id);
     if (!pairs || localDir === null) return;
-    const pair = pairFor(pairs, localDir);
-    if (!pair || pair.destinations[id]) return;
-    const other = lastOn(pairs, id, true);
-    if (!other || sameLocal(other.root, pair.root)) return;
-    setLocalGoTo({ path: other.root, seq: ++goSeq.current });
+    const here = projectAt(pairs, localDir);
+    if (!here) return;
+    const last = pairs.find((p) => p.exists && p.lastFor.includes(id));
+    const other = last ?? (here.destinations[id] ? undefined : lastOn(pairs, id, true));
+    if (other && !sameLocal(other.root, here.root)) openLocal(other.root);
   };
+
+  // Switching in Sync carries over here: its project on the left, its server on the right at
+  // the project's folder there (when it has one).
+  const fromSync = useRef<string | null>(null);
+  useEffect(() => {
+    if (!project) return;
+    // (The server counts once the host list knows it.)
+    const server = project.hostId && hosts.some((h) => h.id === project.hostId) ? project.hostId : null;
+    const key = `${project.root}|${server}|${project.remoteDir}`;
+    if (fromSync.current === key) return;
+    fromSync.current = key;
+    if (server && server !== hostIdRef.current) selectHost(server);
+    if (localDir === null || !sameLocal(localDir, project.root)) openLocal(project.root);
+    if (server && project.remoteDir) go(server, project.remoteDir);
+  }, [project?.root, project?.hostId, project?.remoteDir, hosts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Another server picked: a paired folder goes to its folder on that one, if it has one there.
   const shownHost = useRef(hostId);

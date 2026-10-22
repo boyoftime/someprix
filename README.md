@@ -64,7 +64,7 @@ Your computer on the left, the server on the right. Drag files across to upload 
 - Download to your Downloads folder, create files and folders, delete, copy paths.
 - **Properties** shows total size, file and folder counts, dates, and server permissions and owner.
 - Cancelling a transfer removes what it had already sent, and an upload that replaced files can be undone right after.
-- **Paired folders.** Open a project folder on the left and the server side goes to its folder (the one Sync pushes to), and follows you into subfolders. Pair any other folder from the right-click menu.
+- **Paired folders.** Open a project folder on the left and the server side goes to its folder (the one Sync pushes to), and follows you into subfolders. Pair any other folder from the right-click menu. What you switch to in Sync (project, server) shows here too, and switching servers here brings back the project you last had open on that server.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/sftp-dark.png" />
