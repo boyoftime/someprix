@@ -71,9 +71,17 @@ type ServerPaneProps = {
   download?: { onDownload: (paths: string[]) => void };
   /** Fast mode: deletes run as one server command. */
   fastDelete?: boolean;
-  /** Remember the open folder per host under this name, to come back to it after a reconnect or restart. */
+  /** Remember the open folder per host under this name, to come back to it after a reconnect or
+   *  restart. A new name opens afresh (Sync remembers per project). */
   rememberAs?: string;
+  /** Open the start folder rather than the remembered one (Sync: the project's destination). */
+  startFirst?: boolean;
+  /** A folder to go to now (SFTP following a paired local folder); `fallback` if it can't be opened. */
+  goTo?: GoTo | null;
 };
+
+/** A request to open a server folder; each new `seq` is a new request. */
+export type GoTo = { hostId: string; path: string; fallback?: string; seq: number };
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -99,6 +107,8 @@ export function ServerPane({
   download,
   fastDelete = false,
   rememberAs,
+  startFirst = false,
+  goTo = null,
 }: ServerPaneProps) {
   const { hosts, connected, connecting, reconnecting, connect, disconnect, homes, refreshConnections, notify, lastPush } =
     useAppData();
@@ -149,18 +159,22 @@ export function ServerPane({
   // The remembered folder being reopened, until its listing arrives (it may have gone since).
   const reopening = useRef<string | null>(null);
 
-  // Which host the listing belongs to, to tell switching hosts from a reconnect.
+  // Which host (and place) the listing belongs to, to tell switching from a reconnect.
   const shownHost = useRef<string | null>(null);
+  const shownPlace = useRef(rememberAs);
   const cwdRef = useRef(cwd);
   cwdRef.current = cwd;
+  // A requested folder being opened, and where to go instead if it can't be.
+  const going = useRef<{ path: string; fallback?: string } | null>(null);
 
   useEffect(() => {
     const id = host?.id ?? null;
-    const sameHost = shownHost.current === id;
+    const same = shownHost.current === id && shownPlace.current === rememberAs;
     shownHost.current = id;
+    shownPlace.current = rememberAs;
     if (!host || !isConnected) {
       // Dropped for a moment: keep the folder on screen while the connection comes back.
-      if (sameHost && isReconnecting) return;
+      if (same && isReconnecting) return;
       setEntries(null);
       clear();
       setToDelete(null);
@@ -168,15 +182,30 @@ export function ServerPane({
       return;
     }
     // Back after a drop: the folder that's showing simply reloads.
-    if (sameHost && cwdRef.current) return;
-    // Connected: carry on in the folder from last time, else the start folder.
+    if (same && cwdRef.current) return;
+    // Connected (or another project): the folder from last time, else the start folder; or the
+    // start folder first when asked.
     setEntries(null);
     clear();
     setToDelete(null);
     const last = memoryKey ? remembered(memoryKey) : null;
-    reopening.current = last;
-    setCwd(last ?? fallbackDir());
-  }, [host?.id, isConnected, isReconnecting]); // eslint-disable-line react-hooks/exhaustive-deps
+    const first = startFirst && startDir ? startDir : last;
+    reopening.current = first === last ? last : null;
+    setCwd(first ?? fallbackDir());
+  }, [host?.id, isConnected, isReconnecting, rememberAs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A folder asked for from outside, once its server is connected (after the effect above, so it wins).
+  const wentTo = useRef(0);
+  useEffect(() => {
+    if (!goTo || goTo.seq === wentTo.current || !host || host.id !== goTo.hostId || !isConnected) return;
+    wentTo.current = goTo.seq;
+    reopening.current = null;
+    if (goTo.path === cwdRef.current) return;
+    going.current = { path: goTo.path, fallback: goTo.fallback };
+    setEntries(null);
+    clear();
+    setCwd(goTo.path);
+  }, [goTo, host?.id, isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     onCwdChange?.(cwd);
@@ -193,6 +222,7 @@ export function ServerPane({
       .then((list) => {
         if (!current) return;
         reopening.current = null;
+        going.current = null;
         previousPaths.current = new Set((entriesRef.current ?? []).map((e) => e.path));
         setEntries(list);
       })
@@ -210,6 +240,13 @@ export function ServerPane({
           reopening.current = null;
           if (memoryKey) forget(memoryKey);
           setCwd(fallbackDir());
+          return;
+        }
+        // A requested folder that isn't there: its fallback instead.
+        const fallback = going.current?.path === cwd ? going.current.fallback : undefined;
+        going.current = null;
+        if (fallback && fallback !== cwd) {
+          setCwd(fallback);
           return;
         }
         setError(errorMessage(e));

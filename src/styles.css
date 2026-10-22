@@ -1925,6 +1925,96 @@ input::-ms-clear {
   text-overflow: ellipsis;
 }
 
+/* Project switcher: every project, each with the server folder it pushes to */
+/* The chip's usual cap (60% of the header) moves out to the switcher around it. */
+.project-picker {
+  display: flex;
+  flex: 0 1 auto;
+  max-width: 60%;
+}
+
+.project-picker .project-chip {
+  max-width: 100%;
+}
+
+.project-pop {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+}
+
+.picker-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.picker-row .picker-item {
+  flex: 1;
+  min-width: 0;
+  padding-right: 40px;
+}
+
+.picker-item:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Remove from the list: shows on the row under the pointer or with focus. */
+.picker-remove {
+  position: absolute;
+  right: 8px;
+  opacity: 0;
+}
+
+.picker-row:hover .picker-remove,
+.picker-row:focus-within .picker-remove {
+  opacity: 1;
+}
+
+.picker-row:has(.picker-remove):hover .picker-check,
+.picker-row:has(.picker-remove):focus-within .picker-check {
+  visibility: hidden;
+}
+
+.picker-row .picker-item[aria-selected="true"] {
+  padding-right: 10px;
+}
+
+.picker-sub[data-paired] {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.picker-host {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-sub[data-paired] .path-tail {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.picker-note {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* SFTP: the open local folder is paired with a server folder (accent while the server shows it). */
+.pair-link {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.pair-link[data-showing] {
+  color: var(--accent);
+}
+
 /* Server picker: a chip that opens a list of saved hosts */
 
 .picker {

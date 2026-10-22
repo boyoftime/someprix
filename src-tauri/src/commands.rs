@@ -5,6 +5,7 @@ use std::{
     sync::{Arc, Mutex},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -344,7 +345,79 @@ pub async fn project_open(app: AppHandle, state: State<'_, AppState>, root: Stri
         .await
         .map_err(|e| e.to_string())??;
     state.store.set_active_project(Some(&root))?;
+    // First on the list of projects (and back on it, if it was taken off).
+    let mut link = state.store.project_link(&root);
+    link.opened = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    link.hidden = false;
+    state.store.set_project_link(&root, link)?;
     project_info(&state).ok_or_else(|| "Project closed".into())
+}
+
+/// A folder on this computer Someprix knows, with the server folder it's paired with.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectPair {
+    root: String,
+    name: String,
+    host_id: Option<String>,
+    remote_dir: Option<String>,
+    /// Last opened in Sync (Unix milliseconds); 0 if never.
+    opened: u64,
+    /// Still there on this computer.
+    exists: bool,
+}
+
+/// Every project folder on the list, most recently opened first: Sync's project switcher, and
+/// what SFTP matches local folders with server folders by.
+#[tauri::command]
+pub fn project_pairs(state: State<'_, AppState>) -> Vec<ProjectPair> {
+    let mut pairs: Vec<ProjectPair> = state
+        .store
+        .projects()
+        .into_iter()
+        .filter(|(_, link)| !link.hidden)
+        .map(|(root, link)| ProjectPair {
+            name: Path::new(&root).file_name().map_or_else(|| root.clone(), |n| n.to_string_lossy().into_owned()),
+            exists: Path::new(&root).is_dir(),
+            root,
+            host_id: link.host_id,
+            remote_dir: link.remote_dir,
+            opened: link.opened,
+        })
+        .collect();
+    // projects() is sorted by path, so equal times (never opened) stay in that order.
+    pairs.sort_by(|a, b| b.opened.cmp(&a.opened));
+    pairs
+}
+
+/// Pairs a folder on this computer with a server folder, or with no host unpairs it; for any
+/// folder, not only the project open in Sync (where this is its destination).
+#[tauri::command]
+pub fn project_pair_set(
+    state: State<'_, AppState>,
+    root: String,
+    host_id: Option<String>,
+    remote_dir: Option<String>,
+) -> Result<(), String> {
+    let root = root_key(&root);
+    let mut link = state.store.project_link(&root);
+    link.remote_dir = host_id.as_ref().and(remote_dir);
+    link.host_id = host_id;
+    link.hidden = false;
+    state.store.set_project_link(&root, link)
+}
+
+/// Takes a folder off the list of projects (and SFTP's pairs). Nothing about it is lost: opening
+/// it again puts it back as it was. The open project stays.
+#[tauri::command]
+pub fn project_forget(state: State<'_, AppState>, root: String) -> Result<(), String> {
+    let root = root_key(&root);
+    if project_info(&state).is_some_and(|open| open.root == root) {
+        return Err("That project is open".into());
+    }
+    let mut link = state.store.project_link(&root);
+    link.hidden = true;
+    state.store.set_project_link(&root, link)
 }
 
 /// The project that was open last time, reopened.
@@ -407,6 +480,24 @@ pub async fn project_exclude(
     link.excluded = excluded;
     link.included = included;
     state.store.set_project_link(&root, link)?;
+    let _ = app.emit(CHANGES_EVENT, changes);
+    project_info(&state).ok_or_else(|| "Project closed".into())
+}
+
+/// Refresh: reads the whole project folder again, for anything the watcher missed.
+#[tauri::command]
+pub async fn project_rescan(app: AppHandle, state: State<'_, AppState>) -> Result<ProjectInfo, String> {
+    let shared = state.project.clone();
+    let changes = tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = shared.lock().unwrap();
+        let project = guard.as_mut().ok_or("No project open")?;
+        project.rescan();
+        // The full list comes back with the project below.
+        let _ = project.take_excluded_change();
+        Ok::<_, String>(project.changes())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     let _ = app.emit(CHANGES_EVENT, changes);
     project_info(&state).ok_or_else(|| "Project closed".into())
 }

@@ -146,6 +146,18 @@ export type Settings = {
 /** A project folder Someprix knows, and its own backup choice (null: the setting for all). */
 export type ProjectChoice = { root: string; name: string; backup: boolean | null };
 
+/** A folder on this computer Someprix knows, and the server folder it's paired with. */
+export type ProjectPair = {
+  root: string;
+  name: string;
+  hostId: string | null;
+  remoteDir: string | null;
+  /** Last opened in Sync (Unix milliseconds); 0 if never. */
+  opened: number;
+  /** Still there on this computer. */
+  exists: boolean;
+};
+
 /** A file a push would send (or delete) whose server copy changed since it was last pushed. */
 export type Conflict = {
   path: string;
@@ -230,9 +242,18 @@ export const api = {
   listLocal: (dir: string) => call<LocalEntry[]>("project_list", { dir }),
   setTarget: (hostId: string | null, remoteDir: string | null) =>
     call<void>("project_set_target", { hostId, remoteDir }),
+  /** Every project folder on the list, most recently opened first, with its server folder. */
+  projectPairs: () => call<ProjectPair[]>("project_pairs"),
+  /** Pairs any local folder with a server folder (null host: unpairs it). */
+  pairFolder: (root: string, hostId: string | null, remoteDir: string | null) =>
+    call<void>("project_pair_set", { root, hostId, remoteDir }),
+  /** Takes a folder off the list of projects; opening it again puts it back. */
+  forgetProject: (root: string) => call<void>("project_forget", { root }),
   /** Clears the project's changes (all, or those at or under `paths`): the folder as it is now
    *  counts as what's on the server. Files aren't touched, here or there. */
   clearChanges: (paths?: string[]) => call<ProjectInfo>("project_accept", { paths: paths ?? null }),
+  /** Refresh: reads the whole project folder again (for anything the watcher missed). */
+  rescanProject: () => call<ProjectInfo>("project_rescan"),
   /** Excludes project paths from pushing (or, with `exclude` false, includes them again). */
   excludeFromPush: (paths: string[], exclude: boolean) => call<ProjectInfo>("project_exclude", { paths, exclude }),
   /** Pushes every change, or with `only`, the changes at or under those project paths; `skip` stays behind. */

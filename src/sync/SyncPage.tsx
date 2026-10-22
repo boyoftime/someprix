@@ -127,7 +127,9 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
         onSelectHost={selectHost}
         onAddHost={() => setAddingHost(true)}
         startDir={destination}
-        rememberAs="sync"
+        // Each project has its own place on the server: its destination, else where it was last.
+        rememberAs={project ? `sync.${project.root}` : "sync"}
+        startFirst
         markedDir={destination}
         folderMenu={pushHere}
         footer={destinationFooter}

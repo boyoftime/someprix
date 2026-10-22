@@ -2,13 +2,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Ban, ChevronDown, Copy, Eraser, FolderOpen, FolderSearch, History, Laptop, Upload } from "lucide-react";
+import { Ban, Copy, Eraser, FolderOpen, FolderSearch, History, Laptop, RefreshCw, Upload } from "lucide-react";
 import { errorMessage, useAppData } from "../state/AppData";
 import { useContextMenu } from "../ui/ContextMenu";
 import { FastToggle } from "../ui/FastToggle";
+import { useSpin } from "../ui/useSpin";
 import { Logo } from "../components/Logo";
 import { LocalTree } from "./LocalTree";
 import { ExcludedDialog } from "./ExcludedDialog";
+import { ProjectPicker } from "./ProjectPicker";
 import { rowWidth } from "./Splitter";
 import { fileManager } from "../lib/platform";
 import { Dialog } from "../ui/Dialog";
@@ -92,7 +94,7 @@ function WatchStatus({ changes, scanning }: { changes: Change[]; scanning: boole
 }
 
 export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange, onShowHistory, onFootWidth }: LocalPaneProps) {
-  const { project, projectLoading, openProject, notify, excludeFromPush } = useAppData();
+  const { project, projectLoading, openProject, notify, excludeFromPush, refreshProject } = useAppData();
   // The list of excluded paths, while it's open.
   const [showExcluded, setShowExcluded] = useState(false);
   // "Clear all changes?", while it's asking.
@@ -109,6 +111,22 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
   };
   const openMenu = useContextMenu();
   const attempt = (action: Promise<unknown>) => void action.catch((e) => notify(errorMessage(e), "error"));
+
+  // Refresh: the whole folder is read again (the watcher keeps up by itself; this is for anything it missed).
+  const [rescanning, setRescanning] = useState(false);
+  const refreshSpin = useSpin(rescanning);
+  const refresh = async () => {
+    refreshSpin.spin();
+    setRescanning(true);
+    try {
+      await api.rescanProject();
+      await refreshProject();
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    } finally {
+      setRescanning(false);
+    }
+  };
 
   // The footer stays on one line: the divider stops where it would no longer fit, and if the
   // whole window is too narrow even so, it goes compact ("Push", counts without words).
@@ -196,6 +214,7 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
             disabled: changes.length === 0,
           },
           "separator",
+          { label: "Refresh", icon: RefreshCw, onSelect: () => void refresh(), disabled: rescanning },
           { label: `Open in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(openPath(root)) },
           { label: "Change project", icon: FolderOpen, onSelect: () => void choose() },
           "separator",
@@ -208,11 +227,25 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
           <Laptop size={16} strokeWidth={1.75} />
           Local
         </span>
-        <button type="button" className="chip project-chip" onClick={choose} data-tip={`Change project (${project.name})`}>
-          <FolderOpen size={15} strokeWidth={1.75} />
-          <span className="chip-label">{project.name}</span>
-          <ChevronDown size={14} strokeWidth={2} />
-        </button>
+        <span className="pane-tools">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => void refresh()}
+            disabled={rescanning}
+            aria-label="Refresh"
+            data-tip="Refresh"
+          >
+            <RefreshCw ref={refreshSpin.icon} size={15} strokeWidth={1.75} />
+          </button>
+        </span>
+        <ProjectPicker
+          root={project.root}
+          name={project.name}
+          disabled={projectLoading}
+          onOpen={(root) => void openProject(root)}
+          onBrowse={() => void choose()}
+        />
       </header>
       <div className="pane-path">
         <span className="path-tail" data-tip={project.root}>

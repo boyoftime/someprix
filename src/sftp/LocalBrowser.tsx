@@ -14,8 +14,10 @@ import {
   Info,
   House,
   Laptop,
+  Link2,
   RefreshCw,
   Trash2,
+  Unlink,
   Upload,
 } from "lucide-react";
 import { api, type LocalFsEntry } from "../lib/api";
@@ -83,6 +85,28 @@ function LocalCrumbs({ path, onOpen }: { path: string; onOpen: (path: string) =>
 /** What a download just wrote, to reload the list and point it out. */
 export type Revealed = { at: number; paths: string[] };
 
+/** The server folder the open folder is paired with (it, or the folder it's in that's paired). */
+export type PairShown = {
+  /** The matching server folder: the paired one, plus the same way down. */
+  remotePath: string;
+  hostLabel: string;
+  /** The server side shows it now. */
+  showing: boolean;
+  /** The open folder is the paired one itself. */
+  own: boolean;
+};
+
+/** Pairing the open folder with a server folder, so either side brings the other along. */
+export type Pairing = {
+  pair: PairShown | null;
+  /** Opens the matching server folder. */
+  onGo: () => void;
+  /** The open server folder this one can be paired with, or null. */
+  canPairWith: string | null;
+  onPair: () => void;
+  onUnpair: () => void;
+};
+
 type LocalBrowserProps = {
   /** Why uploading isn't possible right now, or null when it is. */
   uploadBlocker: string | null;
@@ -93,6 +117,7 @@ type LocalBrowserProps = {
   /** Told whenever the open folder changes ("" is the drive list). */
   onPathChange?: (path: string | null) => void;
   revealed?: Revealed | null;
+  pairing?: Pairing;
 };
 
 export function LocalBrowser({
@@ -102,6 +127,7 @@ export function LocalBrowser({
   onSelectionChange,
   onPathChange,
   revealed = null,
+  pairing,
 }: LocalBrowserProps) {
   const { notify } = useAppData();
   const openMenu = useContextMenu();
@@ -281,9 +307,24 @@ export function LocalBrowser({
       { label: "Parent folder", icon: ArrowUp, onSelect: () => up !== null && open(up), disabled: up === null },
       { label: "Home", icon: House, onSelect: () => void api.localHome().then(open) },
       ...(path && !atDrives ? [{ label: `Open in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(openPath(path)) }] : []),
+      ...pairMenu(),
       "separator",
       { label: "Copy path", icon: Copy, onSelect: () => path && attempt(writeText(path)), disabled: !path || atDrives },
     ]);
+
+  /** Pair this folder with the open server folder, go to the paired one, or unpair. */
+  const pairMenu = (): MenuItem[] => {
+    if (!pairing || !path || atDrives) return [];
+    const { pair, canPairWith } = pairing;
+    const items: MenuItem[] = ["separator"];
+    if (pair && !pair.showing) items.push({ label: "Open paired server folder", icon: Link2, onSelect: pairing.onGo });
+    if (canPairWith && !(pair?.own && pair.remotePath === canPairWith)) {
+      const name = canPairWith.split("/").filter(Boolean).pop() ?? "/";
+      items.push({ label: `Pair with server folder “${name}”`, icon: Link2, onSelect: pairing.onPair });
+    }
+    if (pair?.own) items.push({ label: "Unpair from the server folder", icon: Unlink, onSelect: pairing.onUnpair });
+    return items.length > 1 ? items : [];
+  };
 
   const onListKey = (event: KeyboardEvent) => {
     if (event.key === "Enter" && event.altKey && !atDrives && chosen.length) {
@@ -345,6 +386,18 @@ export function LocalBrowser({
       <div className="pane-path">
         {path !== null && <LocalCrumbs path={path} onOpen={open} />}
         {path && <CopyButton text={path} label="Copy path" />}
+        {pairing?.pair && (
+          <button
+            type="button"
+            className="icon-btn pair-link"
+            data-showing={pairing.pair.showing ? "" : undefined}
+            onClick={pairing.onGo}
+            aria-label={`Paired with ${pairing.pair.remotePath}`}
+            data-tip={`Paired with ${pairing.pair.hostLabel}: ${pairing.pair.remotePath}${pairing.pair.showing ? "" : ". Click to open it"}`}
+          >
+            <Link2 size={15} strokeWidth={2} />
+          </button>
+        )}
       </div>
 
       <div

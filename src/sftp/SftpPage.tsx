@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Upload } from "lucide-react";
-import { api, type LocalFsEntry, type PushProgress } from "../lib/api";
+import { api, type LocalFsEntry, type ProjectPair, type PushProgress } from "../lib/api";
 import { errorMessage, useAppData } from "../state/AppData";
 import { HostDialog } from "../hosts/HostDialog";
-import { ServerPane } from "../sync/ServerPane";
+import { ServerPane, type GoTo } from "../sync/ServerPane";
+import { mirror, pairFor, sameLocal } from "../lib/pairs";
 import { Splitter, useSplit } from "../sync/Splitter";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
 import { useFast } from "../ui/FastToggle";
@@ -11,7 +12,7 @@ import { setActivity } from "../state/activity";
 import { remember, remembered } from "../lib/storage";
 import type { MenuItem } from "../ui/ContextMenu";
 import { DragProvider, type DragKind } from "./drag";
-import { LocalBrowser, type Revealed } from "./LocalBrowser";
+import { LocalBrowser, type Pairing, type Revealed } from "./LocalBrowser";
 import { TransferBar, type FinishedTransfer } from "./TransferBar";
 
 const LAST_HOST = "someprix.sftp.host";
@@ -29,7 +30,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  *  It stays open while another page shows (`shown` false), so transfers carry on and their
  *  progress is still here when you come back. */
 export function SftpPage({ shown }: { shown: boolean }) {
-  const { hosts, connected, reconnecting, connect, notify, recordPush } = useAppData();
+  const { hosts, connected, reconnecting, connect, notify, recordPush, project, refreshProject } = useAppData();
   const shownRef = useRef(shown);
   shownRef.current = shown;
   const [chosenHost, setChosenHost] = useState<string | null>(() => remembered(LAST_HOST));
@@ -59,6 +60,86 @@ export function SftpPage({ shown }: { shown: boolean }) {
     setChosenHost(id);
     remember(LAST_HOST, id);
     if (!connected.has(id)) void connect(id);
+  };
+
+  // ---------- Paired folders: a local folder brings its server folder along ----------
+  // Sync's projects (each with its destination), and folders paired here. Read again on each visit.
+  const [pairs, setPairs] = useState<ProjectPair[] | null>(null);
+  const loadPairs = useCallback(() => api.projectPairs().then(setPairs, () => setPairs((p) => p ?? [])), []);
+  useEffect(() => {
+    if (shown) void loadPairs();
+  }, [shown, loadPairs, project?.hostId, project?.remoteDir]);
+  const hostIdRef = useRef(hostId);
+  hostIdRef.current = hostId;
+  const remoteDirRef = useRef(remoteDir);
+  remoteDirRef.current = remoteDir;
+  // Where the server side was asked to go (on the paired folder's server, which it switches to).
+  const [goTo, setGoTo] = useState<GoTo | null>(null);
+  const goSeq = useRef(0);
+  const go = (pairHost: string, path: string, fallback?: string) => {
+    if (pairHost !== hostIdRef.current) selectHost(pairHost);
+    setGoTo({ hostId: pairHost, path, fallback, seq: ++goSeq.current });
+  };
+
+  // Entering a paired folder opens its server folder; moving about inside it, the server side
+  // follows as long as it's still in step (browsed somewhere else, it stays put).
+  const followed = useRef<string | null>(null);
+  useEffect(() => {
+    if (pairs === null || localDir === null) return;
+    const before = followed.current;
+    followed.current = localDir;
+    const pair = pairFor(pairs, localDir);
+    if (!pair?.hostId) return;
+    const target = mirror(pair, localDir);
+    const previous = before === null ? null : pairFor(pairs, before);
+    if (previous?.root === pair.root) {
+      // Inside the same pair: only while in step, and only to a folder that's there.
+      const inStep = hostIdRef.current === pair.hostId && before !== null && remoteDirRef.current === mirror(pair, before);
+      if (!inStep || target === remoteDirRef.current) return;
+      const pairHost = pair.hostId;
+      void api.listRemote(pairHost, target).then(
+        () => followed.current === localDir && remoteDirRef.current === mirror(pair, before) && go(pairHost, target),
+        () => {},
+      );
+      return;
+    }
+    // Just came in: its server folder (the paired one itself if the way down isn't there).
+    if (target !== remoteDirRef.current || pair.hostId !== hostIdRef.current) go(pair.hostId, target, pair.remoteDir ?? undefined);
+  }, [localDir, pairs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const shownPair = localDir ? (pairs && pairFor(pairs, localDir)) : null;
+  const pairing: Pairing = {
+    pair:
+      shownPair?.hostId && localDir
+        ? {
+            remotePath: mirror(shownPair, localDir),
+            hostLabel: hosts.find((h) => h.id === shownPair.hostId)?.label ?? "a server",
+            showing: shownPair.hostId === hostId && mirror(shownPair, localDir) === remoteDir,
+            own: sameLocal(shownPair.root, localDir),
+          }
+        : null,
+    onGo: () => shownPair?.hostId && localDir && go(shownPair.hostId, mirror(shownPair, localDir), shownPair.remoteDir ?? undefined),
+    canPairWith: host && isConnected && remoteDir ? remoteDir : null,
+    onPair: () => {
+      if (!localDir || !host || !remoteDir) return;
+      void pairWith(localDir, host.id, remoteDir);
+    },
+    onUnpair: () => {
+      if (shownPair) void pairWith(shownPair.root, null, null);
+    },
+  };
+
+  /** Pairs (or with no host unpairs) a local folder; Sync's destination, if it's the project open there. */
+  const pairWith = async (root: string, pairHost: string | null, dir: string | null) => {
+    try {
+      await api.pairFolder(root, pairHost, dir);
+      await loadPairs();
+      if (project && sameLocal(project.root, root)) await refreshProject();
+      const name = root.split(/[\\/]/).filter(Boolean).pop() ?? root;
+      notify(pairHost && dir ? `Paired ${name} with ${dir}` : `${name} is no longer paired`);
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    }
   };
 
   // ---------- Transfers: one at a time, the rest wait in line ----------
@@ -245,6 +326,7 @@ export function SftpPage({ shown }: { shown: boolean }) {
           onSelectionChange={setSelection}
           onPathChange={setLocalDir}
           revealed={revealed}
+          pairing={pairing}
         />
         <Splitter container={panes} split={split} onChange={setSplit} />
         <ServerPane
@@ -253,6 +335,7 @@ export function SftpPage({ shown }: { shown: boolean }) {
           onSelectHost={selectHost}
           onAddHost={() => setAddingHost(true)}
           rememberAs="sftp"
+          goTo={goTo}
           folderMenu={uploadHere}
           acceptsDrops
           download={{

@@ -55,6 +55,12 @@ pub struct ProjectLink {
     /// Whether pushes keep a backup on the server; None follows the setting for all projects.
     #[serde(default)]
     pub backup: Option<bool>,
+    /// When the folder was last opened in Sync (Unix milliseconds); 0 if never (paired in SFTP only).
+    #[serde(default)]
+    pub opened: u64,
+    /// Taken off the list of projects (opening it again puts it back).
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 /// Which pushes keep a backup of the server files they replace or delete.

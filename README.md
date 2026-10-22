@@ -46,7 +46,7 @@
   <img src="docs/screenshots/sync-light.png" alt="Sync: changed files marked, ready to push" />
 </picture>
 
-Open your project folder and Someprix watches it. Every file you save, add or delete is marked straight away: amber for changed, green for new, red for deleted. Pick your server and the folder to deploy to once, then press **Push to server** and only those files go up. You can also push a single file or folder from the right-click menu. Every file shows, including the ones your .gitignore lists: right-click anything you never want on the server and choose **Exclude from push**. `.git`, `.venv` and `node_modules` folders start out excluded (a `.git` folder on a web server gives your code and its history away); **Include in push** if you do want one up there.
+Open your project folder and Someprix watches it. Every file you save, add or delete is marked straight away: amber for changed, green for new, red for deleted. Pick your server and the folder to deploy to once, then press **Push to server** and only those files go up. You can also push a single file or folder from the right-click menu. Switch projects from the list under the project's name: each one remembers its server and folder, so both sides switch together. Every file shows, including the ones your .gitignore lists: right-click anything you never want on the server and choose **Exclude from push**. `.git`, `.venv` and `node_modules` folders start out excluded (a `.git` folder on a web server gives your code and its history away); **Include in push** if you do want one up there.
 
 Pushes are safe to stop and safe to take back:
 
@@ -64,6 +64,7 @@ Your computer on the left, the server on the right. Drag files across to upload 
 - Download to your Downloads folder, create files and folders, delete, copy paths.
 - **Properties** shows total size, file and folder counts, dates, and server permissions and owner.
 - Cancelling a transfer removes what it had already sent, and an upload that replaced files can be undone right after.
+- **Paired folders.** Open a project folder on the left and the server side goes to its folder (the one Sync pushes to), and follows you into subfolders. Pair any other folder from the right-click menu.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/sftp-dark.png" />
