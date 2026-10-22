@@ -5,6 +5,7 @@ import {
   Ban,
   ChevronRight,
   Copy,
+  Eraser,
   ExternalLink,
   File,
   Folder,
@@ -42,6 +43,8 @@ type LocalTreeProps = {
   excluded: string[];
   /** Excludes paths from pushing, or with `exclude` false includes them again. */
   onExclude: (paths: string[], exclude: boolean) => void;
+  /** Clears the changes at or under these paths: they count as on the server already. */
+  onClearChanges: (paths: string[]) => void;
 };
 
 const KIND_LABEL: Record<ChangeKind, string> = {
@@ -57,7 +60,7 @@ function summarize(kinds: Set<ChangeKind>): ChangeKind {
   return kinds.size === 1 ? [...kinds][0] : "modified";
 }
 
-export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, onExclude }: LocalTreeProps) {
+export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, onExclude, onClearChanges }: LocalTreeProps) {
   /** The excluded path that covers `path` (itself, or a folder it's in), if any. */
   const excludedBy = (path: string) => excluded.find((ex) => path === ex || path.startsWith(`${ex}/`)) ?? null;
   const { notify } = useAppData();
@@ -215,6 +218,15 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, o
         onSelect: () => onPushPaths(changed.map((t) => t.row.path)),
         disabled: !changed.length || pushBlocker !== null,
       },
+      ...(changed.length
+        ? [
+            {
+              label: changed.length === 1 ? "Clear change" : `Clear ${changed.length} changes`,
+              icon: Eraser,
+              onSelect: () => onClearChanges(changed.map((t) => t.row.path)),
+            },
+          ]
+        : []),
       ...excludeMenu(targets),
       "separator",
       {
@@ -260,6 +272,11 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, o
             icon: Upload,
             onSelect: () => onPushPaths([row.path]),
             disabled: pushBlocker !== null,
+          },
+          {
+            label: row.isDir ? "Clear changes in folder" : "Clear change",
+            icon: Eraser,
+            onSelect: () => onClearChanges([row.path]),
           },
         ]
       : [];

@@ -477,6 +477,48 @@ impl Project {
         self.check(rel);
     }
 
+    /// Takes the folder as it is now as what's on the server, so its changes (all of them, or
+    /// those at or under `paths`) stop counting. Files aren't touched, here or on the server.
+    /// Excluded files keep their records, so including them again doesn't make them new.
+    pub fn accept(&mut self, paths: Option<&[String]>) {
+        match paths {
+            None => {
+                let mut fresh = self.snapshot();
+                for (rel, sig) in &self.baseline {
+                    if is_excluded(&self.excluded, rel) {
+                        fresh.entry(rel.clone()).or_insert(*sig);
+                    }
+                }
+                self.baseline = fresh;
+                self.changes.clear();
+            }
+            Some(paths) => {
+                let hit: Vec<String> = self
+                    .changes
+                    .keys()
+                    .filter(|rel| {
+                        paths
+                            .iter()
+                            .any(|p| *rel == p || rel.strip_prefix(p.as_str()).is_some_and(|rest| rest.starts_with('/')))
+                    })
+                    .cloned()
+                    .collect();
+                for rel in hit {
+                    match signature(&self.root.join(&rel)) {
+                        Ok(sig) => {
+                            self.baseline.insert(rel.clone(), sig);
+                        }
+                        Err(_) => {
+                            self.baseline.remove(&rel);
+                        }
+                    }
+                    self.check(&rel);
+                }
+            }
+        }
+        self.save_baseline();
+    }
+
     /// Lists one folder of the project (non-recursive), skipping ignored entries.
     pub fn list(&self, rel_dir: &str) -> Result<Vec<LocalEntry>, String> {
         let dir = if rel_dir.is_empty() {

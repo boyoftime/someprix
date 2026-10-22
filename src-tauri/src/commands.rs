@@ -427,6 +427,24 @@ pub async fn project_exclude(
     project_info(&state).ok_or_else(|| "Project closed".into())
 }
 
+/// Clears the project's changes (all of them, or those at or under `paths`): what's in the folder
+/// now counts as what's on the server. Neither the files nor the server change.
+#[tauri::command]
+pub async fn project_accept(app: AppHandle, state: State<'_, AppState>, paths: Option<Vec<String>>) -> Result<ProjectInfo, String> {
+    let shared = state.project.clone();
+    // A whole folder is read again (and hashed), which takes a moment on a big one.
+    let changes = tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = shared.lock().unwrap();
+        let project = guard.as_mut().ok_or("No project open")?;
+        project.accept(paths.as_deref());
+        Ok::<_, String>(project.changes())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let _ = app.emit(CHANGES_EVENT, changes);
+    project_info(&state).ok_or_else(|| "Project closed".into())
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PushProgress {

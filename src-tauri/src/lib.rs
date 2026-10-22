@@ -50,6 +50,7 @@ pub fn run() {
             commands::project_list,
             commands::project_set_target,
             commands::project_exclude,
+            commands::project_accept,
             commands::project_push,
             commands::project_push_cancel,
             commands::project_history,

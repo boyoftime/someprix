@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Ban, ChevronDown, Copy, FolderOpen, FolderSearch, History, Laptop, Upload } from "lucide-react";
+import { Ban, ChevronDown, Copy, Eraser, FolderOpen, FolderSearch, History, Laptop, Upload } from "lucide-react";
 import { errorMessage, useAppData } from "../state/AppData";
 import { useContextMenu } from "../ui/ContextMenu";
 import { FastToggle } from "../ui/FastToggle";
@@ -10,8 +10,9 @@ import { Logo } from "../components/Logo";
 import { LocalTree } from "./LocalTree";
 import { ExcludedDialog } from "./ExcludedDialog";
 import { rowWidth } from "./Splitter";
-import type { Change } from "../lib/api";
 import { fileManager } from "../lib/platform";
+import { Dialog } from "../ui/Dialog";
+import { api, type Change } from "../lib/api";
 
 type LocalPaneProps = {
   /** Why pushing isn't possible right now, or null when it is. */
@@ -94,6 +95,18 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
   const { project, projectLoading, openProject, notify, excludeFromPush } = useAppData();
   // The list of excluded paths, while it's open.
   const [showExcluded, setShowExcluded] = useState(false);
+  // "Clear all changes?", while it's asking.
+  const [clearing, setClearing] = useState(false);
+  const clearChanges = async (paths?: string[]) => {
+    try {
+      const before = project?.changes.length ?? 0;
+      const after = await api.clearChanges(paths);
+      const cleared = before - after.changes.length;
+      notify(paths ? `Cleared ${cleared === 1 ? "1 change" : `${cleared} changes`}` : `Cleared all changes in ${after.name}`);
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    }
+  };
   const openMenu = useContextMenu();
   const attempt = (action: Promise<unknown>) => void action.catch((e) => notify(errorMessage(e), "error"));
 
@@ -174,6 +187,12 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
             onSelect: onPush,
             disabled: changes.length === 0 || pushBlocker !== null,
           },
+          {
+            label: changes.length ? "Clear all changes…" : "No changes to clear",
+            icon: Eraser,
+            onSelect: () => setClearing(true),
+            disabled: changes.length === 0,
+          },
           "separator",
           { label: `Open in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(openPath(root)) },
           { label: "Change project", icon: FolderOpen, onSelect: () => void choose() },
@@ -207,6 +226,7 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
         onPushPaths={onPushPaths}
         excluded={project.excluded}
         onExclude={(paths, exclude) => void excludeFromPush(paths, exclude)}
+        onClearChanges={(paths) => void clearChanges(paths)}
       />
 
       <footer className="pane-foot local-foot" ref={foot} data-compact={compact ? "" : undefined}>
@@ -242,6 +262,36 @@ export function LocalPane({ pushBlocker, onPush, onPushPaths, fast, onFastChange
         </span>
       </footer>
       {changes.length > 0 && pushBlocker && <p className="pane-note">{pushBlocker}</p>}
+      {clearing && (
+        <Dialog
+          title="Clear all changes?"
+          onClose={() => setClearing(false)}
+          footer={
+            <>
+              <span className="spacer" />
+              <button type="button" className="btn btn-ghost" onClick={() => setClearing(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => {
+                  setClearing(false);
+                  void clearChanges();
+                }}
+              >
+                Clear {changes.length === 1 ? "1 change" : `${changes.length} changes`}
+              </button>
+            </>
+          }
+        >
+          <p className="dialog-text">
+            Someprix will take <strong>{project.name}</strong> as it is now as what's on the server: the{" "}
+            {changes.length === 1 ? "change stops" : `${changes.length} changes stop`} showing and won't be pushed.
+          </p>
+          <p className="dialog-text">Your files and the server stay exactly as they are. What you edit after this shows as a change again.</p>
+        </Dialog>
+      )}
       {showExcluded && (
         <ExcludedDialog
           excluded={project.excluded}

@@ -230,6 +230,9 @@ export const api = {
   listLocal: (dir: string) => call<LocalEntry[]>("project_list", { dir }),
   setTarget: (hostId: string | null, remoteDir: string | null) =>
     call<void>("project_set_target", { hostId, remoteDir }),
+  /** Clears the project's changes (all, or those at or under `paths`): the folder as it is now
+   *  counts as what's on the server. Files aren't touched, here or there. */
+  clearChanges: (paths?: string[]) => call<ProjectInfo>("project_accept", { paths: paths ?? null }),
   /** Excludes project paths from pushing (or, with `exclude` false, includes them again). */
   excludeFromPush: (paths: string[], exclude: boolean) => call<ProjectInfo>("project_exclude", { paths, exclude }),
   /** Pushes every change, or with `only`, the changes at or under those project paths; `skip` stays behind. */
