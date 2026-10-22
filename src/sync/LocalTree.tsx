@@ -45,6 +45,8 @@ type LocalTreeProps = {
   onExclude: (paths: string[], exclude: boolean) => void;
   /** Clears the changes at or under these paths: they count as on the server already. */
   onClearChanges: (paths: string[]) => void;
+  /** Push, Clear change and Exclude (all about the server): off while pushing to GitHub only. */
+  serverActions?: boolean;
 };
 
 const KIND_LABEL: Record<ChangeKind, string> = {
@@ -60,7 +62,16 @@ function summarize(kinds: Set<ChangeKind>): ChangeKind {
   return kinds.size === 1 ? [...kinds][0] : "modified";
 }
 
-export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, onExclude, onClearChanges }: LocalTreeProps) {
+export function LocalTree({
+  root,
+  changes,
+  pushBlocker,
+  onPushPaths,
+  excluded,
+  onExclude,
+  onClearChanges,
+  serverActions = true,
+}: LocalTreeProps) {
   /** The excluded path that covers `path` (itself, or a folder it's in), if any. */
   const excludedBy = (path: string) => excluded.find((ex) => path === ex || path.startsWith(`${ex}/`)) ?? null;
   const { notify } = useAppData();
@@ -211,7 +222,7 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, o
 
   const manyMenu = (targets: Shown[]): MenuItem[] => {
     const changed = targets.filter((t) => t.kind);
-    return [
+    const server: MenuItem[] = [
       {
         label: changed.length ? `Push ${targets.length} items` : "Nothing to push",
         icon: Upload,
@@ -228,6 +239,9 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, o
           ]
         : []),
       ...excludeMenu(targets),
+    ];
+    return [
+      ...(serverActions ? server : []),
       "separator",
       {
         label: "Copy paths",
@@ -265,7 +279,7 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, o
           { label: isTextFile(row.name) ? "Open externally" : "Open", icon: ExternalLink, onSelect: () => attempt(openPath(full)), disabled: gone },
           { label: `Show in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(revealItemInDir(full)), disabled: gone },
         ];
-    const push: MenuItem[] = kind
+    const push: MenuItem[] = kind && serverActions
       ? [
           {
             label: row.isDir ? "Push folder" : kind === "deleted" ? "Push deletion" : "Push file",
@@ -284,7 +298,7 @@ export function LocalTree({ root, changes, pushBlocker, onPushPaths, excluded, o
       ...open,
       "separator",
       ...push,
-      ...excludeMenu(targets),
+      ...(serverActions ? excludeMenu(targets) : []),
       "separator",
       { label: "Copy path", icon: Copy, onSelect: () => attempt(writeText(full)) },
       { label: "Copy relative path", icon: Copy, onSelect: () => attempt(writeText(row.path)) },

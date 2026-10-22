@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Check, Target } from "lucide-react";
 import { useAppData } from "../state/AppData";
 import type { MenuItem } from "../ui/ContextMenu";
@@ -9,7 +9,8 @@ import { ServerPane } from "./ServerPane";
 import { PushDialog } from "./PushDialog";
 import { HistoryDialog } from "./HistoryDialog";
 import { Splitter, useSplit } from "./Splitter";
-import { api } from "../lib/api";
+import { api, onGithub, type GithubAccount, type GithubStatus, type PushTarget } from "../lib/api";
+import { GitHubPushDialog } from "../github/GitHubPushDialog";
 import { lastOn, sameLocal } from "../lib/pairs";
 
 const FAST_PUSH = "someprix.push.fast";
@@ -77,6 +78,31 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
     if (!connected.has(host.id) && !connecting.has(host.id)) void connect(host.id);
   }, [connectionsKnown, project?.root, host?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---------- GitHub, for a project connected to it ----------
+  const target: PushTarget = project?.pushTarget ?? "server";
+  // What GitHub is missing (its own count, apart from the server's).
+  const [ghStatus, setGhStatus] = useState<GithubStatus | null>(null);
+  const [ghAccount, setGhAccount] = useState<GithubAccount | null>(null);
+  const [githubPushing, setGithubPushing] = useState(false);
+  useEffect(() => {
+    const load = () => void api.githubState().then((state) => setGhAccount(state.account), () => setGhAccount(null));
+    load();
+    // Signing in or out happens in Settings (or while connecting).
+    window.addEventListener("someprix:github", load);
+    return () => window.removeEventListener("someprix:github", load);
+  }, []);
+  const refreshGithub = useCallback(() => {
+    if (!project?.github) return setGhStatus(null);
+    api.githubStatus().then(setGhStatus, () => setGhStatus(null));
+  }, [project?.root, project?.github]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Again whenever files change (a moment later, once edits settle).
+  useEffect(() => {
+    const timer = window.setTimeout(refreshGithub, 400);
+    return () => window.clearTimeout(timer);
+  }, [refreshGithub, project?.changes]);
+  const githubBlocker =
+    project?.github && onGithub(project.github) && !ghAccount ? "Sign in to GitHub first (Settings › GitHub)" : null;
+
   const setDestination = project && host ? (path: string) => void setTarget(host.id, path) : null;
 
   /** "Push to this folder" for a server folder (rows, and the open folder). */
@@ -114,7 +140,7 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
     </footer>
   );
 
-  const pushBlocker = !host
+  const serverBlocker = !host
     ? "No server selected"
     : !connected.has(host.id)
       ? reconnecting.has(host.id)
@@ -123,12 +149,16 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
       : !destination
         ? "No destination set"
         : null;
+  // What stops the Push button, for where it goes.
+  const pushBlocker = target === "github" ? githubBlocker : target === "both" ? (serverBlocker ?? githubBlocker) : serverBlocker;
 
   return (
     <div className="sync" ref={panes} style={{ "--split": `${split * 100}%`, "--left-min": `${footWidth}px` } as CSSProperties}>
       <LocalPane
         pushBlocker={pushBlocker}
-        onPush={() => setPushScope("all")}
+        serverBlocker={serverBlocker}
+        githubChanges={ghStatus?.changes ?? null}
+        onPush={() => (target === "github" ? setGithubPushing(true) : setPushScope("all"))}
         onPushPaths={setPushScope}
         fast={fast}
         onFastChange={changeFast}
@@ -151,6 +181,7 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
         footer={destinationFooter}
       />
 
+      {githubPushing && project && <GitHubPushDialog onClose={() => setGithubPushing(false)} onPushed={refreshGithub} />}
       {addingHost && (
         <HostDialog
           onClose={() => setAddingHost(false)}
@@ -167,6 +198,8 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
           changes={project.changes.filter((c) => inScope(c.path, pushScope))}
           only={pushScope === "all" ? undefined : pushScope}
           fast={fast}
+          github={target === "both" && pushScope === "all"}
+          onGithubPushed={refreshGithub}
           onClose={() => setPushScope(null)}
           onUndo={(undoId) => {
             onShow();

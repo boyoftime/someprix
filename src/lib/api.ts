@@ -50,7 +50,38 @@ export type ProjectInfo = {
   backup: boolean;
   /** This project's own choice; null follows the setting for all projects. */
   backupChoice: boolean | null;
+  /** The GitHub repository it's connected to ("owner/name", or an address for another host). */
+  github: string | null;
+  /** Where Push goes. */
+  pushTarget: PushTarget;
 };
+
+export type PushTarget = "server" | "github" | "both";
+
+/** Whether a connected repository is on GitHub (it needs signing in), not some other host. */
+export const onGithub = (repo: string) =>
+  repo.split("/").length === 2 && !repo.includes(":") && !repo.includes("\\") && !repo.startsWith("git@");
+
+export type GithubAccount = { login: string; name: string | null; id: number };
+export type GithubState = { account: GithubAccount | null; deviceFlow: boolean };
+export type DeviceCode = { deviceCode: string; userCode: string; verificationUri: string; interval: number };
+export type DevicePoll = { status: "waiting" } | { status: "slowDown" } | { status: "done"; account: GithubAccount };
+/** The project against GitHub: what a push would send. */
+export type GithubStatus = {
+  repo: string;
+  /** Its page on GitHub (null for another host). */
+  url: string | null;
+  branch: string;
+  changes: Change[];
+  /** About to go and looking like secrets (.env, keys…). */
+  secrets: string[];
+};
+export type GithubPushed =
+  | { outcome: "pushed"; files: number; branch: string; commit: string }
+  | { outcome: "nothing" }
+  | { outcome: "behind" };
+export type GithubPulled = { outcome: "upToDate" } | { outcome: "merged"; files: number };
+export type GithubProgress = { stage: "fetching" | "committing" | "uploading" | "merging"; done: number; total: number };
 
 export type PushProgress = {
   done: number;
@@ -261,6 +292,24 @@ export const api = {
   clearChanges: (paths?: string[]) => call<ProjectInfo>("project_accept", { paths: paths ?? null }),
   /** Refresh: reads the whole project folder again (for anything the watcher missed). */
   rescanProject: () => call<ProjectInfo>("project_rescan"),
+
+  githubState: () => call<GithubState>("github_state"),
+  githubDeviceStart: () => call<DeviceCode>("github_device_start"),
+  githubDevicePoll: (deviceCode: string) => call<DevicePoll>("github_device_poll", { deviceCode }),
+  githubSignInToken: (token: string) => call<GithubAccount>("github_sign_in_token", { token }),
+  githubSignOut: () => call<void>("github_sign_out"),
+  /** The address the open project's folder already pushes to with git, if any. */
+  githubDetect: () => call<string | null>("github_detect"),
+  /** Connects the open project: a new repository (`create`), or an existing one ("owner/name" or an address). */
+  githubConnect: (repo: string, create: boolean, isPrivate: boolean) =>
+    call<ProjectInfo>("github_connect", { repo, create, private: isPrivate }),
+  githubDisconnect: () => call<ProjectInfo>("github_disconnect"),
+  setPushTarget: (target: PushTarget) => call<ProjectInfo>("project_push_target", { target }),
+  githubStatus: () => call<GithubStatus>("github_status"),
+  githubPush: (message: string) => call<GithubPushed>("github_push", { message }),
+  githubPull: () => call<GithubPulled>("github_pull"),
+  /** Keeps files off GitHub: into .gitignore (and out of git; they stay on disk). */
+  githubIgnore: (paths: string[]) => call<void>("github_ignore", { paths }),
   /** Excludes project paths from pushing (or, with `exclude` false, includes them again). */
   excludeFromPush: (paths: string[], exclude: boolean) => call<ProjectInfo>("project_exclude", { paths, exclude }),
   /** Pushes every change, or with `only`, the changes at or under those project paths; `skip` stays behind. */
@@ -345,6 +394,8 @@ export const api = {
   /** The excluded list, when a .git, .venv or node_modules folder comes or goes (they start out excluded). */
   onExcluded: (handler: (excluded: string[]) => void): Promise<UnlistenFn> =>
     listen<string[]>("project://excluded", (event) => handler(event.payload)),
+  onGithubProgress: (handler: (progress: GithubProgress) => void): Promise<UnlistenFn> =>
+    listen<GithubProgress>("github://progress", (event) => handler(event.payload)),
   onPushProgress: (handler: (progress: PushProgress) => void): Promise<UnlistenFn> =>
     listen<PushProgress>("project://push-progress", (event) => handler(event.payload)),
 };

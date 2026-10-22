@@ -2,7 +2,25 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Ban, Copy, Eraser, FolderOpen, FolderSearch, History, Laptop, RefreshCw, Upload } from "lucide-react";
+import {
+  Ban,
+  Check,
+  ChevronDown,
+  Copy,
+  Eraser,
+  ExternalLink,
+  FolderOpen,
+  FolderSearch,
+  GitBranch,
+  History,
+  Laptop,
+  Layers,
+  RefreshCw,
+  Server,
+  Unlink,
+  Upload,
+} from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage, useAppData } from "../state/AppData";
 import { useContextMenu } from "../ui/ContextMenu";
 import { FastToggle } from "../ui/FastToggle";
@@ -14,11 +32,17 @@ import { ProjectPicker } from "./ProjectPicker";
 import { rowWidth } from "./Splitter";
 import { fileManager } from "../lib/platform";
 import { Dialog } from "../ui/Dialog";
-import { api, type Change } from "../lib/api";
+import { api, onGithub, type Change, type PushTarget } from "../lib/api";
+import { ConnectDialog } from "../github/ConnectDialog";
+import { GithubMark } from "../github/GithubMark";
 
 type LocalPaneProps = {
-  /** Why pushing isn't possible right now, or null when it is. */
+  /** Why pushing (where Push goes) isn't possible right now, or null when it is. */
   pushBlocker: string | null;
+  /** The same for the server alone (the tree's Push file and folder). */
+  serverBlocker: string | null;
+  /** What GitHub is missing, for a project connected to it (null: not known, or not connected). */
+  githubChanges: Change[] | null;
   onPush: () => void;
   /** Push only the changes at or under these project paths. */
   onPushPaths: (paths: string[]) => void;
@@ -104,12 +128,16 @@ export function LocalPane({
   onShowHistory,
   onFootWidth,
   serverId,
+  serverBlocker,
+  githubChanges,
 }: LocalPaneProps) {
   const { project, projectLoading, openProject, notify, excludeFromPush, refreshProject } = useAppData();
   // The list of excluded paths, while it's open.
   const [showExcluded, setShowExcluded] = useState(false);
   // "Clear all changes?", while it's asking.
   const [clearing, setClearing] = useState(false);
+  // Connect to GitHub, while it's open.
+  const [connecting, setConnecting] = useState(false);
   const clearChanges = async (paths?: string[]) => {
     try {
       const before = project?.changes.length ?? 0;
@@ -206,6 +234,38 @@ export function LocalPane({
 
   const changes = project.changes;
   const root = project.root;
+  // Where Push goes, and what that place is missing (GitHub keeps its own count).
+  const target = project.pushTarget;
+  const ghChanges = githubChanges ?? [];
+  const pending = target === "github" ? ghChanges.length : target === "both" ? changes.length + ghChanges.length : changes.length;
+  const pushTitle = target === "github" ? "Push to GitHub" : target === "both" ? "Push to both" : "Push to server";
+  const chooseTarget = async (next: PushTarget) => {
+    try {
+      await api.setPushTarget(next);
+      await refreshProject();
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    }
+  };
+  /** The arrow beside Push: where it goes. */
+  const targetMenu = (anchor: HTMLElement) => {
+    const box = anchor.getBoundingClientRect();
+    openMenu({ clientX: box.left, clientY: box.top - 4, preventDefault: () => {} }, [
+      { label: "Server", icon: target === "server" ? Check : Server, onSelect: () => void chooseTarget("server") },
+      { label: "GitHub", icon: target === "github" ? Check : GitBranch, onSelect: () => void chooseTarget("github") },
+      { label: "Server + GitHub", icon: target === "both" ? Check : Layers, onSelect: () => void chooseTarget("both") },
+    ]);
+  };
+  const disconnect = async () => {
+    try {
+      await api.githubDisconnect();
+      await refreshProject();
+      notify("Disconnected from GitHub. Nothing was deleted, there or here.");
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    }
+  };
+  const githubPage = project.github && onGithub(project.github) ? `https://github.com/${project.github}` : null;
   return (
     <section
       className="pane"
@@ -213,17 +273,28 @@ export function LocalPane({
       onContextMenu={(event) =>
         openMenu(event, [
           {
-            label: changes.length ? `Push all (${changes.length})` : "Nothing to push",
+            label: pending ? `${pushTitle} (${pending})` : "Nothing to push",
             icon: Upload,
             onSelect: onPush,
-            disabled: changes.length === 0 || pushBlocker !== null,
+            disabled: pending === 0 || pushBlocker !== null,
           },
-          {
-            label: changes.length ? "Clear all changes…" : "No changes to clear",
-            icon: Eraser,
-            onSelect: () => setClearing(true),
-            disabled: changes.length === 0,
-          },
+          ...(target !== "github"
+            ? [
+                {
+                  label: changes.length ? "Clear all changes…" : "No changes to clear",
+                  icon: Eraser,
+                  onSelect: () => setClearing(true),
+                  disabled: changes.length === 0,
+                },
+              ]
+            : []),
+          "separator",
+          ...(project.github
+            ? [
+                ...(githubPage ? [{ label: "Open on GitHub", icon: ExternalLink, onSelect: () => attempt(openUrl(githubPage)) }] : []),
+                { label: "Disconnect from GitHub", icon: Unlink, onSelect: () => void disconnect() },
+              ]
+            : [{ label: "Connect to GitHub…", icon: GitBranch, onSelect: () => setConnecting(true) }]),
           "separator",
           { label: "Refresh", icon: RefreshCw, onSelect: () => void refresh(), disabled: rescanning },
           { label: `Open in ${fileManager}`, icon: FolderSearch, onSelect: () => attempt(openPath(root)) },
@@ -268,8 +339,9 @@ export function LocalPane({
 
       <LocalTree
         root={project.root}
-        changes={changes}
-        pushBlocker={pushBlocker}
+        changes={target === "github" ? ghChanges : changes}
+        serverActions={target !== "github"}
+        pushBlocker={serverBlocker}
         onPushPaths={onPushPaths}
         excluded={project.excluded}
         onExclude={(paths, exclude) => void excludeFromPush(paths, exclude)}
@@ -277,8 +349,19 @@ export function LocalPane({
       />
 
       <footer className="pane-foot local-foot" ref={foot} data-compact={compact ? "" : undefined}>
-        <ChangeSummary changes={changes} />
-        {project.excluded.length > 0 && (
+        {target === "github" && (
+          <span className="gh-foot-mark" data-tip={`What GitHub is missing (${project.github})`}>
+            <GithubMark size={14} />
+          </span>
+        )}
+        <ChangeSummary changes={target === "github" ? ghChanges : changes} />
+        {target === "both" && (
+          <span className="gh-count" data-tip={`GitHub: ${ghChanges.length ? `${ghChanges.length} to push` : "nothing new"}`}>
+            <GithubMark size={13} />
+            {ghChanges.length}
+          </span>
+        )}
+        {target !== "github" && project.excluded.length > 0 && (
           <button
             type="button"
             className="excluded-count"
@@ -291,24 +374,36 @@ export function LocalPane({
           </button>
         )}
         <span className="spacer" />
-        <button type="button" className="icon-btn" onClick={onShowHistory} aria-label="Push history" data-tip="Push history and undo">
-          <History size={17} strokeWidth={1.75} />
-        </button>
-        <FastToggle on={fast} onChange={onFastChange} />
-        <span className="tip-wrap" data-tip={changes.length > 0 ? (pushBlocker ?? undefined) : "No changes"}>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={onPush}
-            disabled={changes.length === 0 || pushBlocker !== null}
-          >
-            <Upload size={16} strokeWidth={1.75} />
-            <span className="foot-long">Push to server</span>
-            <span className="foot-short">Push</span>
-          </button>
+        {target !== "github" && (
+          <>
+            <button type="button" className="icon-btn" onClick={onShowHistory} aria-label="Push history" data-tip="Push history and undo">
+              <History size={17} strokeWidth={1.75} />
+            </button>
+            <FastToggle on={fast} onChange={onFastChange} />
+          </>
+        )}
+        <span className="split-btn">
+          <span className="tip-wrap" data-tip={pending > 0 ? (pushBlocker ?? undefined) : "No changes"}>
+            <button type="button" className="btn btn-primary" onClick={onPush} disabled={pending === 0 || pushBlocker !== null}>
+              {target === "github" ? <GithubMark size={15} /> : <Upload size={16} strokeWidth={1.75} />}
+              <span className="foot-long">{pushTitle}</span>
+              <span className="foot-short">Push</span>
+            </button>
+          </span>
+          {project.github && (
+            <button
+              type="button"
+              className="btn btn-primary split-arrow"
+              aria-label="Where Push goes"
+              data-tip="Server, GitHub, or both"
+              onClick={(event) => targetMenu(event.currentTarget)}
+            >
+              <ChevronDown size={15} strokeWidth={2} />
+            </button>
+          )}
         </span>
       </footer>
-      {changes.length > 0 && pushBlocker && <p className="pane-note">{pushBlocker}</p>}
+      {pending > 0 && pushBlocker && <p className="pane-note">{pushBlocker}</p>}
       {clearing && (
         <Dialog
           title="Clear all changes?"
@@ -338,6 +433,17 @@ export function LocalPane({
           </p>
           <p className="dialog-text">Your files and the server stay exactly as they are. What you edit after this shows as a change again.</p>
         </Dialog>
+      )}
+      {connecting && (
+        <ConnectDialog
+          projectName={project.name}
+          onClose={() => setConnecting(false)}
+          onConnected={(info) => {
+            setConnecting(false);
+            void refreshProject();
+            notify(`Connected to ${info.github}. Push now goes to GitHub (the arrow beside it picks).`);
+          }}
+        />
       )}
       {showExcluded && (
         <ExcludedDialog

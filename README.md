@@ -56,6 +56,16 @@ Pushes are safe to stop and safe to take back:
 
 Before pushing, Someprix also checks whether anyone changed those files on the server since your last push. If they did, nothing is overwritten until you choose, file by file: **Overwrite**, **Skip** for now, **Get server version** (your local copy goes to the Recycle Bin, or the Trash on Mac and Linux), or **Compare** the two side by side first.
 
+### Push to GitHub too
+
+Right-click in the Local pane and choose **Connect to GitHub** (a new repository, or one you have), and Push can go to your server, to GitHub, or both: the arrow beside Push picks. Sign in once, in **Settings › GitHub**.
+
+- **Nothing to install.** Git is built in.
+- **`.gitignore` decides what goes to GitHub**, and files that look like secrets (`.env`, keys, service-account files) are stopped first, with a one-click **Keep them off GitHub**.
+- **Each side counts its own changes**, so pushing to the server doesn't hide what GitHub is still missing.
+- **GitHub has newer work?** Someprix gets it first (**Get latest first**), then pushes.
+- **Disconnect** any time: nothing is deleted, on GitHub or here.
+
 ### SFTP: drag files both ways
 
 Your computer on the left, the server on the right. Drag files across to upload or download, or use the right-click menu.

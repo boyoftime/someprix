@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, Gauge, Trash2, TriangleAlert, Zap } from "lucide-react";
 import { Dialog } from "../ui/Dialog";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
@@ -8,6 +9,7 @@ import { formatAgo, formatSize, formatSpeed, formatTimeLeft } from "../lib/forma
 import { errorMessage, useAppData } from "../state/AppData";
 import { CompareDialog, type Choice } from "./CompareDialog";
 import { setActivity } from "../state/activity";
+import { GithubPushPanel, type GithubPhase } from "../github/GithubPushPanel";
 
 type PushDialogProps = {
   host: Host;
@@ -20,6 +22,10 @@ type PushDialogProps = {
   onClose: () => void;
   /** Opens the push history to undo this push (from the toast once it's done). */
   onUndo: (historyId: string) => void;
+  /** Push to both: GitHub goes alongside (its own message and progress). */
+  github?: boolean;
+  /** GitHub has the push (to refresh what it's missing). */
+  onGithubPushed?: () => void;
 };
 
 /** ready → checking the server → (conflicts to decide → taking server versions) → pushing → done */
@@ -52,7 +58,7 @@ function why(conflict: Conflict) {
   return conflict.kind === "deleted" ? `${changed}, deleted here` : changed;
 }
 
-export function PushDialog({ host, remoteDir, changes, only, fast = false, onClose, onUndo }: PushDialogProps) {
+export function PushDialog({ host, remoteDir, changes, only, fast = false, onClose, onUndo, github = false, onGithubPushed }: PushDialogProps) {
   const { notify, recordPush, project } = useAppData();
   // The list as it was when the dialog opened; pushing updates the live one underneath.
   const [listed] = useState(changes);
@@ -88,8 +94,34 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const isDeletion = (path: string) => deletions.some((c) => c.path === path);
   const deleting = order.filter(isDeletion).length;
 
+  // Push to both: GitHub goes alongside, and the dialog closes once both are done.
+  const [ghGo, setGhGo] = useState(0);
+  const [gh, setGh] = useState<GithubPhase | null>(github ? { phase: "loading" } : null);
+  const ghRef = useRef(gh);
+  ghRef.current = gh;
+  const serverDone = useRef(false);
+  /** Nothing (more) for GitHub to do: pushed, or nothing new for it. */
+  const ghSettled = (state: GithubPhase | null) => !state || state.phase === "done" || (state.phase === "ready" && state.files === 0);
+  const ghWork = gh?.phase === "ready" && gh.files > 0;
+  const startGithub = () => {
+    if (gh?.phase === "ready" && gh.canPush && gh.files > 0) setGhGo((n) => n + 1);
+  };
+  /** The server part is over: close, unless GitHub is still going (or needs a hand). */
+  const finish = () => {
+    serverDone.current = true;
+    if (ghSettled(ghRef.current)) onClose();
+  };
+  useEffect(() => {
+    if (gh?.phase !== "done") return;
+    const url = gh.url;
+    notify(gh.text, "info", url ? { label: "Open on GitHub", run: () => void openUrl(url) } : undefined);
+    onGithubPushed?.();
+    if (serverDone.current) onClose();
+  }, [gh?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Checks the server for changes made there since the last push, then pushes or asks. */
   async function start() {
+    startGithub();
     setError(null);
     setHeld([]);
     setPhase("checking");
@@ -127,7 +159,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
         return;
       }
     }
-    if (rest.length === 0) return onClose();
+    if (rest.length === 0) return finish();
     await push(hold);
   }
 
@@ -142,7 +174,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
       if (report.cancelled) {
         notify("Push cancelled. Nothing changed on the server.");
         recordPush([]);
-        onClose();
+        finish();
         return;
       }
       setPhase("done");
@@ -159,7 +191,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
         notify("Fast mode unavailable: no tar on server");
       }
       recordPush(uploads.filter((c) => !skip.includes(c.path)).map((c) => joinRemote(remoteDir, c.path)));
-      onClose();
+      finish();
     } catch (e) {
       setError(errorMessage(e));
       setPhase("ready");
@@ -242,18 +274,23 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
             ? "Pushing…"
             : error
               ? "Retry"
-              : pushLabel(count - deleting, deleting),
-      run: start,
-      disabled: busy || count === 0,
+              : github
+                ? count > 0
+                  ? "Push to both"
+                  : "Push to GitHub"
+                : pushLabel(count - deleting, deleting),
+      // Nothing new for the server: GitHub alone.
+      run: count === 0 ? () => (startGithub(), finish()) : start,
+      disabled: busy || (count === 0 && !ghWork) || (ghWork && gh?.phase === "ready" && !gh.canPush),
     };
   }
 
   return (
     <>
       <Dialog
-        title={only ? (only.length === 1 && listed.length === 1 ? "Push file" : "Push changes") : "Push"}
+        title={github ? "Push to server and GitHub" : only ? (only.length === 1 && listed.length === 1 ? "Push file" : "Push changes") : "Push"}
         onClose={onClose}
-        locked={busy || comparing !== null}
+        locked={busy || comparing !== null || gh?.phase === "pushing"}
         width={deciding ? 720 : 540}
         footer={
           <>
@@ -494,6 +531,12 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
           <p className="form-error" role="alert">
             {error}
           </p>
+        )}
+
+        {github && (
+          <div className="push-dialog-github">
+            <GithubPushPanel compact go={ghGo} onPhase={setGh} />
+          </div>
         )}
       </Dialog>
 

@@ -4,6 +4,8 @@ mod conflicts;
 mod edit;
 mod fast;
 mod files;
+mod github;
+mod gitops;
 mod project;
 mod ssh;
 mod store;
@@ -55,6 +57,19 @@ pub fn run() {
             commands::project_exclude,
             commands::project_accept,
             commands::project_rescan,
+            commands::github_state,
+            commands::github_device_start,
+            commands::github_device_poll,
+            commands::github_sign_in_token,
+            commands::github_sign_out,
+            commands::github_detect,
+            commands::github_connect,
+            commands::github_disconnect,
+            commands::project_push_target,
+            commands::github_status,
+            commands::github_push,
+            commands::github_pull,
+            commands::github_ignore,
             commands::project_push,
             commands::project_push_cancel,
             commands::project_history,

@@ -1275,6 +1275,305 @@ input::-ms-clear {
   --tone: #2fb5a5;
 }
 
+.set-icon[data-tone="ink"] {
+  --tone: var(--text);
+}
+
+/* A button that reads as a link (secondary choices next to a main button). */
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+/* GitHub sign-in: the button, the code to enter on GitHub, or a token. */
+.gh-signin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.gh-signin-btn svg {
+  flex: none;
+}
+
+.gh-code-box {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--field);
+}
+
+.gh-code-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gh-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gh-code {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.gh-code-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.gh-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.gh-token {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 8px;
+}
+
+.gh-token-row {
+  display: flex;
+  gap: 8px;
+}
+
+.gh-token-row input {
+  flex: 1;
+}
+
+.gh-token .hint {
+  margin: 0;
+}
+
+/* Connect to GitHub: which repository */
+.gh-connect-signin {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.gh-connect-signin .hint {
+  margin: 0;
+}
+
+.gh-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gh-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.gh-choice[data-on] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gh-choice input[type="radio"] {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.gh-choice-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gh-choice-title {
+  font-weight: 650;
+}
+
+.gh-choice-sub {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gh-choice-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* Push, and the arrow beside it that picks where it goes (for a project on GitHub too). */
+.split-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: stretch;
+  gap: 1px;
+}
+
+.split-btn:has(.split-arrow) .tip-wrap .btn {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.split-arrow {
+  padding: 0 9px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.split-btn .btn svg {
+  flex: none;
+}
+
+/* The footer's GitHub count (Push to both), and the mark before GitHub's own counts. */
+.gh-count {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--raised);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.gh-foot-mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-muted);
+}
+
+/* Pushing to GitHub (its own dialog, or part of Push to both) */
+.gh-push {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.push-dialog-github {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.gh-push-where {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+}
+
+.gh-push-where .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gh-push-where svg {
+  flex: none;
+}
+
+.gh-push .field input {
+  width: 100%;
+}
+
+.gh-secrets {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--modified) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--modified) 12%, transparent);
+}
+
+.gh-secrets > svg {
+  flex: none;
+  color: var(--modified);
+}
+
+.gh-secrets p {
+  margin: 0 0 6px;
+}
+
+.gh-secrets-title {
+  font-weight: 650;
+}
+
+.gh-secrets-list {
+  overflow-wrap: anywhere;
+}
+
+.gh-secrets-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.gh-behind {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.gh-behind p {
+  margin: 0;
+}
+
+.gh-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--added);
+  font-weight: 600;
+}
+
 .set-card-text h2 {
   margin: 0;
   font-size: 15px;

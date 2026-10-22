@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { ArchiveRestore, Download, FileCode, FolderSync, Monitor, Moon, Palette, RefreshCw, Search, SquareTerminal, Sun, Zap, type LucideIcon } from "lucide-react";
 import { version } from "../../package.json";
-import { api, type BackupMode, type ProjectChoice, type Settings } from "../lib/api";
+import { api, type BackupMode, type GithubState, type ProjectChoice, type Settings } from "../lib/api";
+import { GitHubSignIn, announceGithub } from "../github/GitHubSignIn";
+import { GithubMark } from "../github/GithubMark";
 import { remember, remembered } from "../lib/storage";
 import { errorMessage, useAppData } from "../state/AppData";
 import type { ThemePref } from "../theme";
@@ -37,7 +39,19 @@ const THEMES: [ThemePref, string, LucideIcon][] = [
 ];
 
 /** One group of settings: an icon, a title, a line on what it's for, then its rows. */
-function Card({ icon: Icon, tone, title, about, children }: { icon: LucideIcon; tone: string; title: string; about: string; children: ReactNode }) {
+function Card({
+  icon: Icon,
+  tone,
+  title,
+  about,
+  children,
+}: {
+  icon: LucideIcon | ComponentType<{ size?: number; strokeWidth?: number }>;
+  tone: string;
+  title: string;
+  about: string;
+  children: ReactNode;
+}) {
   return (
     <section className="set-card" aria-label={title}>
       <header className="set-card-head">
@@ -117,6 +131,17 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
   const [settings, setSettings] = useState<Settings | null>(null);
   const [projects, setProjects] = useState<ProjectChoice[]>([]);
   const [filter, setFilter] = useState("");
+  // The GitHub account (null: signed out), once known.
+  const [github, setGithub] = useState<GithubState | null>(null);
+  const signOut = async () => {
+    try {
+      await api.githubSignOut();
+      setGithub((g) => g && { ...g, account: null });
+      announceGithub();
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    }
+  };
   const [root, setRoot] = useState("");
   // The ones kept in this window, mirrored so the switches move at once.
   const [local, setLocal] = useState(() => ({
@@ -137,6 +162,7 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
       })
       .catch((e) => notify(errorMessage(e), "error"));
     void api.backupProjects().then(setProjects).catch(() => setProjects([]));
+    void api.githubState().then(setGithub).catch(() => setGithub({ account: null, deviceFlow: false }));
   }, [notify]);
 
   const save = (changes: Partial<Settings>) => {
@@ -307,6 +333,23 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
             label="Follow Sync"
             hint="Switching project or server in Sync switches SFTP too: the same project on the left, the same server on the right, at the project's folder there."
           />
+        </Card>
+
+        <Card icon={GithubMark} tone="ink" title="GitHub" about="Push projects to GitHub too, or instead of a server. .gitignore decides what goes there.">
+          {github === null ? (
+            <Loading label="Checking GitHub" />
+          ) : github.account ? (
+            <Row label={`Signed in as ${github.account.login}`} hint={github.account.name ?? undefined}>
+              <button type="button" className="btn" onClick={() => void signOut()}>
+                Sign out
+              </button>
+            </Row>
+          ) : (
+            <GitHubSignIn
+              deviceFlow={github.deviceFlow}
+              onSignedIn={(account) => setGithub((g) => ({ deviceFlow: g?.deviceFlow ?? false, account }))}
+            />
+          )}
         </Card>
 
         <Card icon={SquareTerminal} tone="rose" title="SSH Terminal" about="The shell on your server.">

@@ -65,6 +65,13 @@ pub struct ProjectLink {
     /// servers brings that server's folder back. `host_id` and `remote_dir` are the pair in use.
     #[serde(default)]
     pub destinations: HashMap<String, String>,
+    /// The GitHub repository it's connected to ("owner/name", or the address for another host);
+    /// none: server only.
+    #[serde(default)]
+    pub github: Option<String>,
+    /// Where Push goes: "server", "github" or "both" (none: the server).
+    #[serde(default)]
+    pub push_target: Option<String>,
 }
 
 impl ProjectLink {
@@ -184,6 +191,8 @@ struct Data {
     /// The project folder last open in Sync with each server (host id → folder): picking that
     /// server again brings it back.
     server_projects: HashMap<String, String>,
+    /// The GitHub account signed in (its token is in the credential store).
+    github: Option<crate::github::Account>,
     settings: Settings,
 }
 
@@ -286,6 +295,24 @@ impl Store {
         self.data.lock().unwrap().server_projects.clone()
     }
 
+    /// The GitHub account signed in, with its token (none if signed out, or the token's gone).
+    pub fn github(&self) -> Option<(crate::github::Account, String)> {
+        let account = self.data.lock().unwrap().github.clone()?;
+        let token = self.github_credential().ok()?.get_password().ok()?;
+        Some((account, token))
+    }
+
+    pub fn set_github(&self, signed_in: Option<(crate::github::Account, &str)>) -> Result<(), String> {
+        let entry = self.github_credential().map_err(|e| format!("Credential store unavailable: {e}"))?;
+        match &signed_in {
+            Some((_, token)) => entry.set_password(token).map_err(|e| format!("Credential save failed: {e}"))?,
+            None => {
+                let _ = entry.delete_credential();
+            }
+        }
+        self.update(|data| data.github = signed_in.map(|(account, _)| account))
+    }
+
     pub fn projects(&self) -> Vec<(String, ProjectLink)> {
         let mut list: Vec<_> = self.data.lock().unwrap().projects.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
@@ -350,5 +377,14 @@ pub fn set_secret(host_id: &str, secret: &str) -> Result<(), String> {
 pub fn delete_secret(host_id: &str) {
     if let Ok(entry) = credential(host_id) {
         let _ = entry.delete_credential();
+    }
+}
+
+impl Store {
+    /// The GitHub token's place in the credential store: one per app data folder, so a test
+    /// build never touches the real app's sign-in.
+    fn github_credential(&self) -> keyring::Result<keyring::Entry> {
+        let app = self.dir.file_name().map_or_else(|| "app".into(), |n| n.to_string_lossy().into_owned());
+        keyring::Entry::new(CREDENTIAL_SERVICE, &format!("github:{app}"))
     }
 }

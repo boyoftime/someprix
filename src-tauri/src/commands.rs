@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::{
     backup,
     conflicts::{self, Conflict},
-    edit, fast,
+    edit, fast, gitops, github,
     turbo::{self, Meter},
     files::{self, PART_SUFFIX},
     project::{self, Change, ChangeKind, LocalEntry, ServerSig, SharedProject, Sig, CHANGES_EVENT},
@@ -298,6 +298,10 @@ pub struct ProjectInfo {
     /// own choice about that (none: it follows the setting for all projects).
     backup: bool,
     backup_choice: Option<bool>,
+    /// The GitHub repository it's connected to ("owner/name"), if any.
+    github: Option<String>,
+    /// Where Push goes: "server", "github" or "both".
+    push_target: String,
 }
 
 /// Project folders are keyed by their path without a trailing separator (but a drive or the
@@ -317,7 +321,11 @@ fn project_info(state: &AppState) -> Option<ProjectInfo> {
     let guard = state.project.lock().unwrap();
     let project = guard.as_ref()?;
     let root = project.root.to_string_lossy().into_owned();
-    let ProjectLink { host_id, remote_dir, backup: backup_choice, .. } = state.store.project_link(&root);
+    let ProjectLink { host_id, remote_dir, backup: backup_choice, github, push_target, .. } = state.store.project_link(&root);
+    let push_target = match (&github, push_target.as_deref()) {
+        (Some(_), Some(target @ ("github" | "both"))) => target.to_string(),
+        _ => "server".to_string(),
+    };
     Some(ProjectInfo {
         backup: state.store.settings().backs_up(backup_choice),
         backup_choice,
@@ -330,6 +338,8 @@ fn project_info(state: &AppState) -> Option<ProjectInfo> {
         remote_dir,
         changes: project.changes(),
         excluded: project.excluded(),
+        github,
+        push_target,
     })
 }
 
@@ -2032,4 +2042,237 @@ async fn discard_staged(lanes: &[Arc<ssh::Connection>], staged: &[(String, Strin
         }
     }
     left.into_inner()
+}
+
+// ---------- GitHub ----------
+
+const GITHUB_PROGRESS: &str = "github://progress";
+
+/// The GitHub account signed in, and whether signing in through GitHub's page is set up.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubState {
+    account: Option<github::Account>,
+    device_flow: bool,
+}
+
+#[tauri::command]
+pub fn github_state(state: State<'_, AppState>) -> GithubState {
+    GithubState {
+        account: state.store.github().map(|(account, _)| account),
+        device_flow: !github::client_id().is_empty(),
+    }
+}
+
+#[tauri::command]
+pub async fn github_device_start() -> Result<github::DeviceCode, String> {
+    github::device_start().await
+}
+
+/// Where a sign-in through GitHub's page stands.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase", tag = "status")]
+pub enum DevicePoll {
+    Waiting,
+    SlowDown,
+    Done { account: github::Account },
+}
+
+#[tauri::command]
+pub async fn github_device_poll(state: State<'_, AppState>, device_code: String) -> Result<DevicePoll, String> {
+    match github::device_poll(&device_code).await? {
+        github::Poll::Waiting => Ok(DevicePoll::Waiting),
+        github::Poll::SlowDown => Ok(DevicePoll::SlowDown),
+        github::Poll::Token(token) => {
+            let account = github::account(&token).await?;
+            state.store.set_github(Some((account.clone(), &token)))?;
+            Ok(DevicePoll::Done { account })
+        }
+    }
+}
+
+/// Signs in with a token made on GitHub (Settings › Developer settings › Personal access tokens).
+#[tauri::command]
+pub async fn github_sign_in_token(state: State<'_, AppState>, token: String) -> Result<github::Account, String> {
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Err("Paste a token from GitHub".into());
+    }
+    let account = github::account(&token).await?;
+    state.store.set_github(Some((account.clone(), &token)))?;
+    Ok(account)
+}
+
+/// Signs out: the token leaves this computer. Projects stay connected, and push again once
+/// signed in.
+#[tauri::command]
+pub fn github_sign_out(state: State<'_, AppState>) -> Result<(), String> {
+    state.store.set_github(None)
+}
+
+fn open_root(state: &AppState) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(project_info(state).ok_or("No project open")?.root))
+}
+
+/// The address the open project's folder already pushes to with git, if any (offered when connecting).
+#[tauri::command]
+pub fn github_detect(state: State<'_, AppState>) -> Option<String> {
+    gitops::remote_url(&open_root(&state).ok()?)
+}
+
+/// Connects the open project to a repository: a new one on the account (`create`, named
+/// `repo`), or an existing one ("owner/name", a GitHub address, or any git address). Push then
+/// goes to GitHub.
+#[tauri::command]
+pub async fn github_connect(state: State<'_, AppState>, repo: String, create: bool, private: bool) -> Result<ProjectInfo, String> {
+    let root = open_root(&state)?;
+    let token = state.store.github().map(|(_, token)| token);
+    let repo = repo.trim();
+    if repo.is_empty() {
+        return Err("Name the repository".into());
+    }
+    let (url, name) = if create {
+        let token = token.ok_or("Sign in to GitHub first")?;
+        let made = github::create_repo(&token, repo, private).await?;
+        (made.clone_url, made.full_name)
+    } else if let Some(full) = github::full_name_of(repo) {
+        // GitHub over https: that's what signing in covers.
+        (format!("https://github.com/{full}.git"), full)
+    } else if repo.contains("://") || repo.starts_with("git@") || Path::new(repo).is_absolute() {
+        (repo.to_string(), repo.to_string())
+    } else {
+        let found = github::find_repo(token.as_deref(), repo.trim_matches('/')).await?;
+        (found.clone_url, found.full_name)
+    };
+    gitops::connect(&root, &url)?;
+    let key = root.to_string_lossy().into_owned();
+    let mut link = state.store.project_link(&key);
+    link.github = Some(name);
+    link.push_target = Some("github".into());
+    state.store.set_project_link(&key, link)?;
+    project_info(&state).ok_or_else(|| "Project closed".into())
+}
+
+/// Back to server only. Nothing is deleted: the repository on GitHub, and the folder's git
+/// history, stay as they are.
+#[tauri::command]
+pub fn github_disconnect(state: State<'_, AppState>) -> Result<ProjectInfo, String> {
+    let key = open_root(&state)?.to_string_lossy().into_owned();
+    let mut link = state.store.project_link(&key);
+    link.github = None;
+    link.push_target = None;
+    state.store.set_project_link(&key, link)?;
+    project_info(&state).ok_or_else(|| "Project closed".into())
+}
+
+/// Where Push goes for the open project: "server", "github" or "both".
+#[tauri::command]
+pub fn project_push_target(state: State<'_, AppState>, target: String) -> Result<ProjectInfo, String> {
+    if !["server", "github", "both"].contains(&target.as_str()) {
+        return Err(format!("No such push target: {target}"));
+    }
+    let key = open_root(&state)?.to_string_lossy().into_owned();
+    let mut link = state.store.project_link(&key);
+    if target != "server" && link.github.is_none() {
+        return Err("Connect the project to GitHub first".into());
+    }
+    link.push_target = Some(target);
+    state.store.set_project_link(&key, link)?;
+    project_info(&state).ok_or_else(|| "Project closed".into())
+}
+
+/// The open project against GitHub: what a push would send.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubStatus {
+    repo: String,
+    /// Its page on GitHub (none for another host).
+    url: Option<String>,
+    branch: String,
+    changes: Vec<Change>,
+    /// Files about to go that look like secrets (.env, keys…): the push asks first.
+    secrets: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn github_status(state: State<'_, AppState>) -> Result<GithubStatus, String> {
+    let root = open_root(&state)?;
+    let repo = state
+        .store
+        .project_link(&root.to_string_lossy())
+        .github
+        .ok_or("The project isn't connected to GitHub")?;
+    let status = tauri::async_runtime::spawn_blocking(move || gitops::status(&root))
+        .await
+        .map_err(|e| e.to_string())??;
+    let secrets = status
+        .changes
+        .iter()
+        .filter(|c| c.kind != ChangeKind::Deleted && gitops::looks_secret(&c.path))
+        .map(|c| c.path.clone())
+        .collect();
+    Ok(GithubStatus {
+        url: (!repo.contains("://") && !repo.starts_with("git@") && repo.contains('/'))
+            .then(|| format!("https://github.com/{repo}")),
+        repo,
+        branch: status.branch,
+        changes: status.changes,
+        secrets,
+    })
+}
+
+/// Signing in to GitHub for git, and who commits are by.
+fn git_login(state: &AppState) -> (gitops::Login, gitops::Author) {
+    match state.store.github() {
+        Some((account, token)) => (
+            Some((account.login.clone(), token)),
+            gitops::Author {
+                name: account.display_name().to_string(),
+                email: account.email(),
+            },
+        ),
+        None => (
+            None,
+            gitops::Author {
+                name: "Someprix".into(),
+                email: "someprix@users.noreply.github.com".into(),
+            },
+        ),
+    }
+}
+
+/// Commits what differs from GitHub (as .gitignore allows) with `message`, and pushes it.
+#[tauri::command]
+pub async fn github_push(app: AppHandle, state: State<'_, AppState>, message: String) -> Result<gitops::Pushed, String> {
+    let root = open_root(&state)?;
+    let (login, author) = git_login(&state);
+    tauri::async_runtime::spawn_blocking(move || {
+        gitops::push(&root, &message, &author, &login, &|progress| {
+            let _ = app.emit(GITHUB_PROGRESS, progress);
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Gets GitHub's newer work into the project (after a push said GitHub was ahead).
+#[tauri::command]
+pub async fn github_pull(app: AppHandle, state: State<'_, AppState>) -> Result<gitops::Pulled, String> {
+    let root = open_root(&state)?;
+    let (login, author) = git_login(&state);
+    tauri::async_runtime::spawn_blocking(move || {
+        gitops::pull(&root, &author, &login, &|progress| {
+            let _ = app.emit(GITHUB_PROGRESS, progress);
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Keeps files off GitHub: they go into .gitignore (and out of git, staying on disk).
+#[tauri::command]
+pub fn github_ignore(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
+    let root = open_root(&state)?;
+    gitops::ignore(&root, &paths)?;
+    gitops::untrack(&root, &paths)
 }

@@ -37,6 +37,11 @@ tar = "0.4"
 flate2 = "1"
 futures = "0.3"
 tauri-plugin-updater = "2"
+# Git built in (no git to install): commits, and pushes to GitHub over HTTPS.
+git2 = { version = "0.21", default-features = false, features = ["https"] }
+# GitHub's API (sign-in, repositories), over the TLS the updater already uses.
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
@@ -46,6 +51,11 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# On Mac and Linux git's HTTPS uses OpenSSL: built in from source, so a build needs nothing
+# installed (and a universal Mac build gets it for both chips).
+[target.'cfg(unix)'.dependencies]
+git2 = { version = "0.21", default-features = false, features = ["https", "vendored-openssl"] }
 
 # Passwords go to Windows Credential Manager, the Mac Keychain, or the Secret Service (GNOME
 # Keyring, KWallet) on Linux.
