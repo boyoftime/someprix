@@ -10,6 +10,9 @@ const BOARDS = ["amber", "ice", "paper", "terminal", "ember"] as const;
 const HOLD = 2800;
 const STAGGER = 60;
 
+/** The glass that passes over the board as it changes, a different one each time. */
+const GLASSES = ["glass", "water", "frost", "prism", "drop"] as const;
+
 type Tile = { ch: string; board: (typeof BOARDS)[number] };
 
 const tilesOf = (name: string, board: Tile["board"]): Tile[] =>
@@ -19,10 +22,12 @@ const holdStill = () => typeof matchMedia === "function" && matchMedia("(prefers
 /**
  * A split-flap board under the studio's logo: SOMELESS ADO, then SAMWEL ADONIA, over and over.
  * Only the letters that differ flip, one tile after another; after both names the whole board
- * flips over into its next colours.
+ * flips over into its next colours. Each change, a pane of glass (or water, frost, a prism, a
+ * drop) passes over the board with the flips.
  */
 export function NameShow() {
   const [tiles, setTiles] = useState<Tile[]>(() => tilesOf("", BOARDS[0]));
+  const [glass, setGlass] = useState<(typeof GLASSES)[number] | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -51,6 +56,8 @@ export function NameShow() {
     const advance = () => {
       const board = BOARDS[Math.floor(step / NAMES.length) % BOARDS.length];
       flipTo(tilesOf(NAMES[step % NAMES.length], board));
+      // One after another, so each is a new animation.
+      if (!still) setGlass(GLASSES[step % GLASSES.length]);
       step++;
       later(SLOTS * STAGGER + HOLD, advance);
     };
@@ -64,16 +71,38 @@ export function NameShow() {
   return (
     <div className="about-names" data-board={tiles[0].board}>
       <span className="sr-only">Someless Ado, also known as Samwel Adonia</span>
-      <span className="nm-board" aria-hidden="true">
-        {tiles.map((tile, i) => (
-          <span key={i} className="nm-tile">
-            {/* A new letter (or colour) is a new face, so it flips in over the tile. */}
-            <span key={`${tile.board}-${tile.ch}`} className="nm-face" data-board={tile.board}>
-              {tile.ch === " " ? "\u00a0" : tile.ch}
-            </span>
+      <span className="nm-stage" aria-hidden="true">
+        <Board tiles={tiles} />
+        {/* The glass passing over as the letters change: a window moving across a copy of the
+            board, the copy held in place under it (and magnified, rippled or frosted by it). */}
+        <span className="nm-pane" data-glass={glass ?? undefined}>
+          <span className="nm-pane-inner">
+            <Board tiles={tiles} />
           </span>
-        ))}
+        </span>
       </span>
+      {/* Water's ripple. */}
+      <svg className="nm-defs" aria-hidden="true" focusable="false">
+        <filter id="nm-ripple" x="-5%" y="-20%" width="110%" height="140%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.015 0.08" numOctaves={2} seed={7} />
+          <feDisplacementMap in="SourceGraphic" scale={10} xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </svg>
     </div>
+  );
+}
+
+function Board({ tiles }: { tiles: Tile[] }) {
+  return (
+    <span className="nm-board">
+      {tiles.map((tile, i) => (
+        <span key={i} className="nm-tile">
+          {/* A new letter (or colour) is a new face, so it flips in over the tile. */}
+          <span key={`${tile.board}-${tile.ch}`} className="nm-face" data-board={tile.board}>
+            {tile.ch === " " ? "\u00a0" : tile.ch}
+          </span>
+        </span>
+      ))}
+    </span>
   );
 }
