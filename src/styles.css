@@ -4586,6 +4586,48 @@ input::-ms-clear {
 
 /* ---------- Update dialog ---------- */
 
+/* Up to date: the check plays once, then the words. */
+.update-latest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 6px;
+  text-align: center;
+}
+
+.update-latest-mark {
+  margin: -14px 0 -8px;
+}
+
+.update-latest-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  animation: latest-in 360ms var(--ease-out) 420ms both;
+}
+
+.update-latest-text {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  animation: latest-in 360ms var(--ease-out) 520ms both;
+}
+
+@keyframes latest-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-latest-title,
+  .update-latest-text {
+    animation: none;
+  }
+}
+
 .update-body {
   display: grid;
   gap: 12px;

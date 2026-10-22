@@ -6,13 +6,16 @@ type LottieProps = {
   data: object;
   size: number;
   className?: string;
+  /** Play it through once and stay on the last frame (a moment, like "done"), not on a loop. */
+  once?: boolean;
 };
 
 /**
- * Plays a Lottie animation on a loop. With reduced motion it shows a single still frame.
- * Decorative: always paired with visible text that says what is happening.
+ * Plays a Lottie animation, on a loop or `once`. With reduced motion it shows a single still
+ * frame (the last one when `once`). Decorative: always paired with visible text that says what
+ * is happening.
  */
-export function Lottie({ data, size, className }: LottieProps) {
+export function Lottie({ data, size, className, once = false }: LottieProps) {
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,14 +24,14 @@ export function Lottie({ data, size, className }: LottieProps) {
     const animation = lottie.loadAnimation({
       container: box.current,
       renderer: "svg",
-      loop: true,
+      loop: !once,
       autoplay: !still,
       animationData: data,
       rendererSettings: { preserveAspectRatio: "xMidYMid meet" },
     });
-    if (still) animation.goToAndStop(animation.totalFrames / 2, true);
+    if (still) animation.goToAndStop(once ? animation.totalFrames - 1 : animation.totalFrames / 2, true);
     return () => animation.destroy();
-  }, [data]);
+  }, [data, once]);
 
   return <div ref={box} className={className} style={{ width: size, height: size }} aria-hidden="true" />;
 }

@@ -6,6 +6,8 @@ import { useEditor } from "../editor/EditorProvider";
 import { formatSize } from "../lib/format";
 import { Dialog } from "../ui/Dialog";
 import { Loading } from "../ui/Loading";
+import { Lottie } from "../ui/Lottie";
+import checkAnimation from "../assets/lottie/check.json";
 import { inTauri } from "../window/windowFx";
 import { AUTO_UPDATES, isOn } from "../settings/SettingsPage";
 
@@ -162,11 +164,9 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       {step !== "closed" && (
         <Dialog
           title={
-            step === "checking"
+            step === "checking" || step === "latest"
               ? "Check for updates"
-              : step === "latest"
-                ? "Up to date"
-                : step === "available"
+              : step === "available"
                   ? "Update available"
                   : step === "failed"
                     ? "Update stopped"
@@ -206,7 +206,13 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
           }
         >
           {step === "checking" && <Loading label="Checking GitHub…" />}
-          {step === "latest" && <p className="dialog-text">Someprix {currentVersion} is the latest version.</p>}
+          {step === "latest" && (
+            <div className="update-latest" role="status">
+              <Lottie data={checkAnimation} size={136} once className="update-latest-mark" />
+              <p className="update-latest-title">You're up to date</p>
+              <p className="update-latest-text">Someprix {currentVersion} is the latest version.</p>
+            </div>
+          )}
           {step === "available" && found && (
             <div className="update-body">
               <p className="update-version">
