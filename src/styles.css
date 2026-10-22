@@ -4409,220 +4409,119 @@ label.gh-choice-title {
   animation: about-rise 700ms var(--ease-out) 150ms both;
 }
 
-/* The maker's names under the studio's logo: SOMELESS ADO, then SAMWEL ADONIA, in five looks
-   in turn (NameShow.tsx). */
+/* The maker's names under the studio's logo, on a split-flap board (NameShow.tsx): a letter
+   that changes flips in over its tile, one tile after another. */
 .about-names {
-  --size: clamp(22px, 2.8vw, 40px);
+  --size: clamp(22px, 3vw, 44px);
   display: grid;
   place-items: center;
-  height: calc(var(--size) * 1.8);
+  height: calc(var(--size) * 1.7);
   margin-top: clamp(4px, 1.4vh, 16px);
   font-size: var(--size);
-  line-height: 1.2;
-  white-space: nowrap;
   pointer-events: none;
 }
 
-.nm-word {
-  display: inline-flex;
-  align-items: center;
-}
-
-.nm-ch {
-  display: inline-block;
-  white-space: pre;
-}
-
-/* decode: terminal letters scrambling, then locking in, in cyan light. */
-.about-names[data-look="decode"] .nm-word {
-  color: #a6f1ff;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-shadow:
-    0 0 12px rgba(80, 220, 255, 0.8),
-    0 0 30px rgba(80, 220, 255, 0.4);
-}
-
-.about-names[data-look="decode"] .nm-ch[data-wild] {
-  color: rgba(166, 241, 255, 0.42);
-  text-shadow: none;
-}
-
-.about-names[data-look="decode"] .nm-word[data-out] {
-  animation: nm-fade 340ms ease-in both;
-}
-
-/* flap: a departure board. Amber letters on split tiles; a changed letter flips in. */
-.about-names[data-look="flap"] .nm-word {
-  gap: 0.07em;
+.nm-board {
+  display: flex;
+  gap: 0.08em;
   font-weight: 800;
-  perspective: 500px;
+  perspective: 600px;
 }
 
-.about-names[data-look="flap"] .nm-ch {
-  position: relative;
-  width: 0.8em;
+.nm-tile,
+.nm-face {
   border-radius: 0.12em;
-  background: linear-gradient(180deg, #2c2f3d 0 50%, #20232f 50% 100%);
+  background: linear-gradient(180deg, var(--tile-top) 0 50%, var(--tile-bottom) 50% 100%);
+}
+
+.nm-tile {
+  display: grid;
+  width: 0.8em;
+  height: 1.16em;
   box-shadow:
     0 8px 16px -8px rgba(0, 0, 0, 0.7),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-  color: #ffcf6e;
-  font-size: 0.88em;
-  line-height: 1.32;
-  text-align: center;
-  animation: nm-flap 520ms cubic-bezier(0.3, 1.35, 0.5, 1) calc(var(--i) * 55ms) both;
+    inset 0 0 0 1px var(--tile-edge);
+}
+
+.nm-face {
+  position: relative;
+  display: grid;
+  grid-area: 1 / 1;
+  place-items: center;
+  box-shadow: inset 0 0 0 1px var(--tile-edge);
+  color: var(--ink);
+  font-size: 0.84em;
+  line-height: 1;
+  text-shadow: var(--glow);
+  animation: nm-flip 480ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
 /* The split across each tile. */
-.about-names[data-look="flap"] .nm-ch::after {
+.nm-face::after {
   position: absolute;
   top: 50%;
   right: 0;
   left: 0;
   height: 1px;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--split);
   content: "";
 }
 
-.about-names[data-look="flap"] .nm-gap {
-  width: 0.36em;
-  background: none;
-  box-shadow: none;
-}
-
-.about-names[data-look="flap"] .nm-gap::after {
-  display: none;
-}
-
-.about-names[data-look="flap"] .nm-word[data-out] .nm-ch {
-  animation: nm-flap-away 260ms ease-in calc(var(--i) * 30ms) both;
-}
-
-/* focus: bold white, coming sharp out of a blur. */
-.about-names[data-look="focus"] .nm-word {
-  background: linear-gradient(180deg, #ffffff 35%, #c8dbff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  filter: blur(0) drop-shadow(0 4px 16px rgba(10, 14, 40, 0.5));
-  animation: nm-focus 900ms var(--ease-out) both;
-}
-
-.about-names[data-look="focus"] .nm-word[data-out] {
-  animation: nm-unfocus 540ms ease-in both;
-}
-
-/* type: a green terminal, typing behind a prompt, with a blinking block. */
-.about-names[data-look="type"] .nm-word {
-  color: #8dffb0;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-shadow: 0 0 12px rgba(80, 255, 140, 0.6);
-}
-
-.nm-prompt {
-  margin-right: 0.55em;
-  opacity: 0.55;
-}
-
-.nm-caret {
-  width: 0.56em;
-  height: 1.05em;
-  margin-left: 0.08em;
-  background: currentColor;
-  box-shadow: 0 0 12px rgba(80, 255, 140, 0.7);
-  animation: nm-blink 1s steps(1) infinite;
-}
-
-/* fire: the logo's flame colours, letters bouncing up, then burning away. */
-.about-names[data-look="fire"] .nm-word {
-  font-size: 1.08em;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
-.about-names[data-look="fire"] .nm-ch {
-  background: linear-gradient(180deg, #fff4a8 0%, #ffc23d 34%, #ff7a1a 68%, #e3361c 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 10px rgba(255, 120, 30, 0.6)) drop-shadow(0 2px 0 #5a1406);
-  animation: nm-rise 640ms cubic-bezier(0.2, 1.5, 0.4, 1) calc(var(--i) * 45ms) both;
-}
-
-.about-names[data-look="fire"] .nm-word[data-out] .nm-ch {
-  animation: nm-burn 380ms ease-in calc(var(--i) * 28ms) both;
-}
-
-@keyframes nm-fade {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes nm-flap {
+@keyframes nm-flip {
   from {
-    opacity: 0;
-    transform: rotateX(-95deg);
-  }
-  60% {
-    opacity: 1;
+    transform: rotateX(88deg);
+    filter: brightness(0.5);
   }
 }
 
-@keyframes nm-flap-away {
-  to {
-    opacity: 0;
-    transform: rotateX(95deg);
-  }
+/* The five boards. */
+[data-board="amber"] {
+  --tile-top: #2e3140;
+  --tile-bottom: #222532;
+  --tile-edge: rgba(255, 255, 255, 0.07);
+  --ink: #ffcf6e;
+  --glow: 0 0 10px rgba(255, 190, 80, 0.35);
+  --split: rgba(0, 0, 0, 0.6);
 }
 
-@keyframes nm-focus {
-  from {
-    opacity: 0;
-    letter-spacing: 0.55em;
-    filter: blur(14px) drop-shadow(0 4px 16px rgba(10, 14, 40, 0));
-  }
+[data-board="ice"] {
+  --tile-top: #13293b;
+  --tile-bottom: #0c1d2b;
+  --tile-edge: rgba(140, 230, 255, 0.16);
+  --ink: #9ef3ff;
+  --glow: 0 0 12px rgba(90, 220, 255, 0.6);
+  --split: rgba(0, 0, 0, 0.6);
 }
 
-@keyframes nm-unfocus {
-  to {
-    opacity: 0;
-    letter-spacing: 0.55em;
-    filter: blur(14px) drop-shadow(0 4px 16px rgba(10, 14, 40, 0));
-  }
+[data-board="paper"] {
+  --tile-top: #f4f6fa;
+  --tile-bottom: #e1e6ee;
+  --tile-edge: rgba(255, 255, 255, 0.7);
+  --ink: #1b2131;
+  --glow: none;
+  --split: rgba(20, 26, 40, 0.22);
 }
 
-@keyframes nm-blink {
-  50% {
-    opacity: 0;
-  }
+[data-board="terminal"] {
+  --tile-top: #11281b;
+  --tile-bottom: #0b1b12;
+  --tile-edge: rgba(120, 255, 160, 0.14);
+  --ink: #86ffa6;
+  --glow: 0 0 12px rgba(80, 255, 140, 0.55);
+  --split: rgba(0, 0, 0, 0.6);
 }
 
-@keyframes nm-rise {
-  from {
-    opacity: 0;
-    transform: translateY(0.7em) scale(0.6) rotate(-8deg);
-  }
-}
-
-@keyframes nm-burn {
-  to {
-    opacity: 0;
-    transform: translateY(-0.6em) scale(1.15);
-    filter: blur(4px) drop-shadow(0 0 10px rgba(255, 120, 30, 0));
-  }
+[data-board="ember"] {
+  --tile-top: #321711;
+  --tile-bottom: #230f0b;
+  --tile-edge: rgba(255, 140, 60, 0.18);
+  --ink: #ffb04f;
+  --glow: 0 0 12px rgba(255, 120, 30, 0.65);
+  --split: rgba(0, 0, 0, 0.6);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .about-names .nm-word,
-  .about-names .nm-ch,
-  .about-names .nm-caret {
+  .nm-face {
     animation: none;
   }
 }
