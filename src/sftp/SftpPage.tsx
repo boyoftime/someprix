@@ -4,7 +4,7 @@ import { api, type LocalFsEntry, type ProjectPair, type PushProgress } from "../
 import { errorMessage, useAppData } from "../state/AppData";
 import { HostDialog } from "../hosts/HostDialog";
 import { ServerPane, type GoTo } from "../sync/ServerPane";
-import { mirror, pairFor, placeFor, sameLocal } from "../lib/pairs";
+import { lastOn, mirror, pairFor, placeFor, sameLocal } from "../lib/pairs";
 import { Splitter, useSplit } from "../sync/Splitter";
 import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
 import { useFast } from "../ui/FastToggle";
@@ -89,6 +89,11 @@ export function SftpPage({ shown }: { shown: boolean }) {
     if (pairs === null || localDir === null) return;
     const before = followed.current;
     followed.current = localDir;
+    // Opened to stay on the server showing (Back, after switching servers): nothing follows.
+    if (quiet.current !== null && sameLocal(quiet.current, localDir)) {
+      quiet.current = null;
+      return;
+    }
     const pair = pairFor(pairs, localDir);
     const place = pair && placeFor(pair, hostIdRef.current);
     if (!pair || !place) return;
@@ -108,6 +113,32 @@ export function SftpPage({ shown }: { shown: boolean }) {
     // Just came in: its server folder (the paired one itself if the way down isn't there).
     if (target !== remoteDirRef.current || place.hostId !== hostIdRef.current) go(place.hostId, target, place.dir);
   }, [localDir, pairs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The local side, sent to a folder from here (switching servers); `quiet`: without the server following.
+  const [localGoTo, setLocalGoTo] = useState<{ path: string; seq: number } | null>(null);
+  const quiet = useRef<string | null>(null);
+  const openLocal = (path: string, follow = true) => {
+    quiet.current = follow ? null : path;
+    setLocalGoTo({ path, seq: ++goSeq.current });
+  };
+
+  /** Another server picked here. In a project folder with no folder on that server, the left side
+   *  goes to the project last used with it, so both sides match (Back undoes that). */
+  const chooseServer = (id: string) => {
+    selectHost(id);
+    if (!pairs || localDir === null) return;
+    const pair = pairFor(pairs, localDir);
+    if (!pair || pair.destinations[id]) return;
+    const other = lastOn(pairs, id);
+    if (!other) return;
+    const from = localDir;
+    openLocal(other.root);
+    const server = hosts.find((h) => h.id === id)?.label ?? "that server";
+    notify(`Opened ${other.name}, the folder paired with ${server}`, "info", {
+      label: `Back to ${pair.name}`,
+      run: () => openLocal(from, false),
+    });
+  };
 
   // Another server picked: a paired folder goes to its folder on that one, if it has one there.
   const shownHost = useRef(hostId);
@@ -343,12 +374,13 @@ export function SftpPage({ shown }: { shown: boolean }) {
           onPathChange={setLocalDir}
           revealed={revealed}
           pairing={pairing}
+          goTo={localGoTo}
         />
         <Splitter container={panes} split={split} onChange={setSplit} />
         <ServerPane
           hostId={hostId}
           fastDelete={fast}
-          onSelectHost={selectHost}
+          onSelectHost={chooseServer}
           onAddHost={() => setAddingHost(true)}
           rememberAs="sftp"
           goTo={goTo}

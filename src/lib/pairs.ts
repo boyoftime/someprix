@@ -45,6 +45,16 @@ export function placeFor(pair: ProjectPair, hostId: string | null): { hostId: st
   return first ? { hostId: first[0], dir: first[1] } : null;
 }
 
+/** The project last used with a server: one using it now (most recently opened first), else any
+ *  with a folder there. `pairs` comes most recently opened first. */
+export function lastOn(pairs: ProjectPair[], hostId: string): ProjectPair | null {
+  return (
+    pairs.find((p) => p.exists && p.hostId === hostId && p.remoteDir) ??
+    pairs.find((p) => p.exists && p.destinations[hostId]) ??
+    null
+  );
+}
+
 /** The server folder that matches a local folder in `pair`: `dir` (its folder there), plus the same way down. */
 export function mirror(pair: ProjectPair, dir: string, path: string): string {
   const rest = inside(pair.root, path);

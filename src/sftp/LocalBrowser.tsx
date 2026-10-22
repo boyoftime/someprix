@@ -118,6 +118,8 @@ type LocalBrowserProps = {
   onPathChange?: (path: string | null) => void;
   revealed?: Revealed | null;
   pairing?: Pairing;
+  /** A folder to open now (switching servers brings the folder paired with it); each `seq` once. */
+  goTo?: { path: string; seq: number } | null;
 };
 
 export function LocalBrowser({
@@ -128,6 +130,7 @@ export function LocalBrowser({
   onPathChange,
   revealed = null,
   pairing,
+  goTo = null,
 }: LocalBrowserProps) {
   const { notify } = useAppData();
   const openMenu = useContextMenu();
@@ -200,6 +203,17 @@ export function LocalBrowser({
   }, [path, reload]);
 
   useEffect(() => onPathChange?.(path), [path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const wentTo = useRef(0);
+  useEffect(() => {
+    if (!goTo || goTo.seq === wentTo.current) return;
+    wentTo.current = goTo.seq;
+    if (goTo.path !== path) {
+      setEntries(null);
+      clear();
+      setPath(goTo.path);
+    }
+  }, [goTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // After a download: reload, then select and light up what arrived.
   useEffect(() => {

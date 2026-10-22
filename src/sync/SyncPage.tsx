@@ -9,6 +9,8 @@ import { ServerPane } from "./ServerPane";
 import { PushDialog } from "./PushDialog";
 import { HistoryDialog } from "./HistoryDialog";
 import { Splitter, useSplit } from "./Splitter";
+import { api } from "../lib/api";
+import { lastOn, sameLocal } from "../lib/pairs";
 
 const FAST_PUSH = "someprix.push.fast";
 
@@ -25,7 +27,8 @@ type SyncPageProps = {
 };
 
 export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPageProps) {
-  const { project, hosts, connected, connectionsKnown, connecting, reconnecting, connect, setTarget } = useAppData();
+  const { project, hosts, connected, connectionsKnown, connecting, reconnecting, connect, setTarget, openProject, notify } =
+    useAppData();
   // The server shown when there's no project to remember it.
   const [looseHostId, setLooseHostId] = useState<string | null>(null);
   const [addingHost, setAddingHost] = useState(false);
@@ -44,9 +47,33 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
   const host = hosts.find((h) => h.id === hostId) ?? null;
   const destination = project && host && project.hostId === host.id ? project.remoteDir : null;
 
-  const selectHost = (id: string) => {
+  const selectHost = (id: string) => void switchServer(id);
+  /** Another server picked: if this project has a folder there, it comes back; if not, the project
+   *  last used with that server opens instead, so both sides match (or stays, if asked). */
+  const switchServer = async (id: string) => {
     setLooseHostId(id);
-    if (project) void setTarget(id, project.hostId === id ? project.remoteDir : null);
+    if (project?.hostId === id) return;
+    const pairs = await api.projectPairs().catch(() => []);
+    const mine = project ? pairs.find((p) => sameLocal(p.root, project.root)) : undefined;
+    const other = lastOn(pairs, id);
+    if (other && !mine?.destinations[id] && !(project && sameLocal(other.root, project.root))) {
+      const from = project;
+      const opened = await openProject(other.root);
+      if (!opened) return;
+      if (opened.hostId !== id) await setTarget(id, null);
+      const server = hosts.find((h) => h.id === id)?.label ?? "that server";
+      notify(
+        `Opened ${other.name}, the project on ${server}`,
+        "info",
+        from ? { label: `Stay on ${from.name}`, run: () => void stay(from.root, id) } : undefined,
+      );
+      return;
+    }
+    if (project) await setTarget(id, null);
+  };
+  /** Back to the project that was open, on the server picked (to give it a folder there). */
+  const stay = async (root: string, id: string) => {
+    if (await openProject(root)) await setTarget(id, null);
   };
 
   useEffect(() => {
