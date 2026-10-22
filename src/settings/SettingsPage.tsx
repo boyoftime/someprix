@@ -4,6 +4,7 @@ import { version } from "../../package.json";
 import { api, type BackupMode, type GithubState, type ProjectChoice, type Settings } from "../lib/api";
 import { GitHubSignIn, announceGithub } from "../github/GitHubSignIn";
 import { GithubMark } from "../github/GithubMark";
+import { GithubAccount } from "../github/GithubAccount";
 import { remember, remembered } from "../lib/storage";
 import { errorMessage, useAppData } from "../state/AppData";
 import type { ThemePref } from "../theme";
@@ -114,6 +115,8 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
   };
   // The GitHub account (null: signed out), once known.
   const [github, setGithub] = useState<GithubState | null>(null);
+  // Signed in just now (the blue tick pops in).
+  const [justSignedIn, setJustSignedIn] = useState(false);
   const signOut = async () => {
     try {
       await api.githubSignOut();
@@ -336,13 +339,15 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
         github === null ? (
           <Loading label="Checking GitHub" />
         ) : github.account ? (
-          <Row label={`Signed in as ${github.account.login}`} hint={github.account.name ?? undefined}>
-            <button type="button" className="btn" onClick={() => void signOut()}>
-              Sign out
-            </button>
-          </Row>
+          <GithubAccount account={github.account} fresh={justSignedIn} onSignOut={() => void signOut()} />
         ) : (
-          <GitHubSignIn deviceFlow={github.deviceFlow} onSignedIn={(account) => setGithub((g) => ({ deviceFlow: g?.deviceFlow ?? false, account }))} />
+          <GitHubSignIn
+            deviceFlow={github.deviceFlow}
+            onSignedIn={(account) => {
+              setJustSignedIn(true);
+              setGithub((g) => ({ deviceFlow: g?.deviceFlow ?? false, account }));
+            }}
+          />
         ),
     },
     {

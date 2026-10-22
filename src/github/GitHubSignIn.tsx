@@ -5,6 +5,8 @@ import { Copy, ExternalLink, KeyRound } from "lucide-react";
 import { api, type DeviceCode, type GithubAccount } from "../lib/api";
 import { errorMessage } from "../state/AppData";
 import { GithubMark } from "./GithubMark";
+import { Lottie } from "../ui/Lottie";
+import connectingAnimation from "../assets/lottie/connecting.json";
 
 /** GitHub's page for making a token with access to repositories. */
 const TOKEN_PAGE = "https://github.com/settings/tokens/new?scopes=repo&description=Someprix";
@@ -88,7 +90,12 @@ export function GitHubSignIn({ deviceFlow, onSignedIn }: { deviceFlow: boolean; 
 
   return (
     <div className="gh-signin">
-      {code ? (
+      {checking ? (
+        <div className="gh-signing" role="status">
+          <Lottie data={connectingAnimation} size={64} />
+          <p>Signing in to GitHub…</p>
+        </div>
+      ) : code ? (
         <div className="gh-code-box" role="status">
           <p className="gh-code-label">Enter this code on GitHub</p>
           <div className="gh-code-row">
