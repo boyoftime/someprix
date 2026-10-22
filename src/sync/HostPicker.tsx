@@ -91,6 +91,19 @@ export function HostPicker({ hosts, value, connected, connecting, onSelect, onAd
 
       {open && (
         <div className="picker-pop" role="listbox" aria-label="Servers">
+          {/* First, so it's there without scrolling past a long list. */}
+          <button
+            type="button"
+            className="picker-item picker-action"
+            onClick={() => choose(onAddHost)}
+            onMouseEnter={(event) => event.currentTarget.focus()}
+          >
+            <span className="picker-icon">
+              <Plus size={16} strokeWidth={2} />
+            </span>
+            <span className="picker-name">New host</span>
+          </button>
+          <div className="ctx-sep" role="separator" />
           {hosts.map((host) => {
             const selected = host.id === value;
             const state = connecting.has(host.id) ? "connecting" : connected.has(host.id) ? "connected" : "idle";
@@ -125,18 +138,6 @@ export function HostPicker({ hosts, value, connected, connecting, onSelect, onAd
               </button>
             );
           })}
-          <div className="ctx-sep" role="separator" />
-          <button
-            type="button"
-            className="picker-item picker-action"
-            onClick={() => choose(onAddHost)}
-            onMouseEnter={(event) => event.currentTarget.focus()}
-          >
-            <span className="picker-icon">
-              <Plus size={16} strokeWidth={2} />
-            </span>
-            <span className="picker-name">New host</span>
-          </button>
         </div>
       )}
     </div>
