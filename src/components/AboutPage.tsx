@@ -19,10 +19,8 @@ export function AboutPage() {
         <div className="about-app">
           <Logo size={68} className="about-icon" />
           <div className="about-app-text">
-            <h1 className="about-name">
-              Someprix
-              <span className="about-version">Version {version}</span>
-            </h1>
+            <h1 className="about-name">Someprix</h1>
+            <p className="about-version">Version {version}</p>
             <p className="about-tagline">An open-source, modern SSH client, with Sync, SFTP, a terminal and an editor in one app.</p>
           </div>
         </div>

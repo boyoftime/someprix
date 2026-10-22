@@ -4453,23 +4453,20 @@ label.gh-choice-title {
 }
 
 .about-name {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 14px;
   margin: 0;
+  line-height: 1.15;
   font-size: clamp(26px, 2.6vw, 34px);
   font-weight: 750;
   letter-spacing: -0.02em;
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
 }
 
-/* The version, beside the name: quieter, on the same line. */
+/* The version, just below the name: quieter. */
 .about-version {
+  margin: 2px 0 0;
   color: rgba(255, 255, 255, 0.66);
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: 0;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .about-tagline {
