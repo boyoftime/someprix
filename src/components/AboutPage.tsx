@@ -25,13 +25,13 @@ export function AboutPage() {
           </div>
         </div>
         <div className="about-maker">
-          <span>
-            Made by <strong>Someless Ado</strong>
-          </span>
           <button type="button" className="btn about-github" onClick={() => void openUrl(REPOSITORY).catch(() => {})}>
             <GithubMark size={16} />
             View on GitHub
           </button>
+          <span>
+            Made by <strong>Someless Ado</strong>
+          </span>
         </div>
       </div>
     </div>

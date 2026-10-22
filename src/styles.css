@@ -4478,12 +4478,15 @@ label.gh-choice-title {
   text-wrap: balance;
 }
 
+/* GitHub, with who made it just below. */
 .about-maker {
   display: flex;
   flex: none;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
 }
 
 .about-maker strong {
