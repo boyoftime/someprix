@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Scale } from "lucide-react";
 import { version } from "../../package.json";
 import { Logo } from "./Logo";
 import { NameShow } from "./NameShow";
@@ -9,6 +10,7 @@ import studio from "../assets/someless-tricks.png";
 import icon from "../assets/someprix-icon.png";
 
 const REPOSITORY = "https://github.com/boyoftime/someprix";
+const LICENSE = `${REPOSITORY}/blob/main/LICENSE`;
 
 /** About Someprix, across the whole page: the studio's logo in a sunrise sky, the app along the foot. */
 export function AboutPage() {
@@ -43,6 +45,10 @@ export function AboutPage() {
           <span>
             Made by <strong>Someless Ado</strong>
           </span>
+          <button type="button" className="about-license" onClick={() => void openUrl(LICENSE).catch(() => {})}>
+            <Scale size={13} strokeWidth={2} aria-hidden="true" />
+            Free software under the GNU AGPL-3.0
+          </button>
         </div>
       </div>
     </div>
