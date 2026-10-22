@@ -64,6 +64,15 @@ export const onGithub = (repo: string) =>
 
 export type GithubAccount = { login: string; name: string | null; id: number };
 export type GithubState = { account: GithubAccount | null; deviceFlow: boolean };
+/** One of the account's repositories, to pick from. `pushedAt`: RFC 3339. `canPush`: false for read-only access. */
+export type GithubRepo = {
+  fullName: string;
+  private: boolean;
+  description: string | null;
+  pushedAt: string | null;
+  archived: boolean;
+  canPush: boolean;
+};
 export type DeviceCode = { deviceCode: string; userCode: string; verificationUri: string; interval: number };
 export type DevicePoll = { status: "waiting" } | { status: "slowDown" } | { status: "done"; account: GithubAccount };
 /** The project against GitHub: what a push would send. */
@@ -300,6 +309,8 @@ export const api = {
   githubSignOut: () => call<void>("github_sign_out"),
   /** The address the open project's folder already pushes to with git, if any. */
   githubDetect: () => call<string | null>("github_detect"),
+  /** The signed-in account's repositories, most recently pushed first. */
+  githubRepos: () => call<GithubRepo[]>("github_repos"),
   /** Connects the open project: a new repository (`create`), or an existing one ("owner/name" or an address). */
   githubConnect: (repo: string, create: boolean, isPrivate: boolean) =>
     call<ProjectInfo>("github_connect", { repo, create, private: isPrivate }),

@@ -58,7 +58,7 @@ Before pushing, Someprix also checks whether anyone changed those files on the s
 
 ### Push to GitHub too
 
-Right-click in the Local pane and choose **Connect to GitHub** (a new repository, or one you have), and Push can go to your server, to GitHub, or both: the arrow beside Push picks. Sign in once, in **Settings › GitHub**.
+Right-click in the Local pane and choose **Connect to GitHub** (a new repository, or one you already have, picked from a searchable list of yours), and Push can go to your server, to GitHub, or both: the arrow beside Push picks. Sign in once, in **Settings › GitHub**.
 
 - **Nothing to install.** Git is built in.
 - **`.gitignore` decides what goes to GitHub**, and files that look like secrets (`.env`, keys, service-account files) are stopped first, with a one-click **Keep them off GitHub**.

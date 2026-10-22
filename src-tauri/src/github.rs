@@ -244,6 +244,75 @@ pub async fn find_repo(token: Option<&str>, full_name: &str) -> Result<Repo, Str
     response.json().await.map_err(unreachable)
 }
 
+/// One of the account's repositories, to pick from.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Listed {
+    pub full_name: String,
+    pub private: bool,
+    pub description: Option<String>,
+    /// Last pushed to (RFC 3339).
+    pub pushed_at: Option<String>,
+    /// Read-only on GitHub: pushes are refused.
+    pub archived: bool,
+    /// The account may push to it (not true of every repository an organization shares).
+    pub can_push: bool,
+}
+
+/// The repositories the account owns or works on, most recently pushed first.
+pub async fn list_repos(token: &str) -> Result<Vec<Listed>, String> {
+    #[derive(Deserialize)]
+    struct Item {
+        full_name: String,
+        private: bool,
+        description: Option<String>,
+        pushed_at: Option<String>,
+        #[serde(default)]
+        archived: bool,
+        permissions: Option<Permissions>,
+    }
+    #[derive(Deserialize)]
+    struct Permissions {
+        push: bool,
+    }
+    const PER_PAGE: usize = 100; // GitHub's most
+    let client = client()?;
+    let mut all = Vec::new();
+    // Ten pages is more than anyone picks from.
+    for page in 1..=10 {
+        let response = client
+            .get(format!(
+                "{}/user/repos?per_page={PER_PAGE}&page={page}&sort=pushed&affiliation=owner,collaborator,organization_member",
+                api()
+            ))
+            .bearer_auth(token)
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await
+            .map_err(unreachable)?;
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err("GitHub no longer accepts this sign-in. Sign out and in again.".into());
+        }
+        if !response.status().is_success() {
+            return Err(complaint(response).await);
+        }
+        let items: Vec<Item> = response.json().await.map_err(unreachable)?;
+        let last = items.len() < PER_PAGE;
+        all.extend(items.into_iter().map(|item| Listed {
+            full_name: item.full_name,
+            private: item.private,
+            description: item.description.filter(|d| !d.trim().is_empty()),
+            pushed_at: item.pushed_at,
+            archived: item.archived,
+            can_push: item.permissions.map_or(true, |p| p.push),
+        }));
+        if last {
+            break;
+        }
+    }
+    Ok(all)
+}
+
 /// "owner/name" for a GitHub address (https or ssh form), or None for any other.
 pub fn full_name_of(url: &str) -> Option<String> {
     let rest = url

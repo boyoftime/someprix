@@ -2114,6 +2114,13 @@ fn open_root(state: &AppState) -> Result<PathBuf, String> {
     Ok(PathBuf::from(project_info(state).ok_or("No project open")?.root))
 }
 
+/// The signed-in account's repositories, most recently pushed first (to pick one to connect).
+#[tauri::command]
+pub async fn github_repos(state: State<'_, AppState>) -> Result<Vec<github::Listed>, String> {
+    let (_, token) = state.store.github().ok_or("Sign in to GitHub first")?;
+    github::list_repos(&token).await
+}
+
 /// The address the open project's folder already pushes to with git, if any (offered when connecting).
 #[tauri::command]
 pub fn github_detect(state: State<'_, AppState>) -> Option<String> {

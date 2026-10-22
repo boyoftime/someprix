@@ -63,6 +63,7 @@ pub fn run() {
             commands::github_sign_in_token,
             commands::github_sign_out,
             commands::github_detect,
+            commands::github_repos,
             commands::github_connect,
             commands::github_disconnect,
             commands::project_push_target,

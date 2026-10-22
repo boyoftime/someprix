@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Dialog } from "../ui/Dialog";
 import { Switch } from "../ui/Switch";
 import { api, onGithub, type GithubState, type ProjectInfo } from "../lib/api";
 import { errorMessage } from "../state/AppData";
 import { GitHubSignIn } from "./GitHubSignIn";
+import { RepoPicker } from "./RepoPicker";
 
 type Choice = "folder" | "create" | "existing";
 
@@ -26,17 +27,24 @@ export function ConnectDialog({
   const [github, setGithub] = useState<GithubState | null>(null);
   const [detected, setDetected] = useState<string | null>(null);
   const [choice, setChoice] = useState<Choice>("create");
+  // Picked by hand: the folder's own repository, found a moment later, doesn't override it.
+  const pickedByHand = useRef(false);
+  const choose = (next: Choice) => {
+    pickedByHand.current = true;
+    setChoice(next);
+  };
   const [name, setName] = useState(repoName(projectName));
   const [isPrivate, setPrivate] = useState(true);
   const [existing, setExisting] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const existingId = useId();
 
   useEffect(() => {
     void api.githubState().then(setGithub, () => setGithub({ account: null, deviceFlow: false }));
     void api.githubDetect().then((url) => {
       setDetected(url);
-      if (url) setChoice("folder");
+      if (url && !pickedByHand.current) setChoice("folder");
     });
   }, []);
 
@@ -82,9 +90,11 @@ export function ConnectDialog({
         allows goes there.
       </p>
 
-      {github && !signedIn && needsSignIn && (
+      {github && !signedIn && (needsSignIn || choice === "existing") && (
         <section className="gh-connect-signin" aria-label="Sign in to GitHub">
-          <p className="hint">Sign in to GitHub first.</p>
+          <p className="hint">
+            {needsSignIn ? "Sign in to GitHub first." : "Sign in to GitHub to pick from your repositories, or type any git address below."}
+          </p>
           <GitHubSignIn deviceFlow={github.deviceFlow} onSignedIn={(account) => setGithub({ ...github, account })} />
         </section>
       )}
@@ -93,7 +103,7 @@ export function ConnectDialog({
       <div className="gh-choices" role="radiogroup" aria-label="Which repository">
         {detected && (
           <label className="gh-choice" data-on={choice === "folder" ? "" : undefined}>
-            <input type="radio" name="gh-choice" checked={choice === "folder"} onChange={() => setChoice("folder")} />
+            <input type="radio" name="gh-choice" checked={choice === "folder"} onChange={() => choose("folder")} />
             <span className="gh-choice-text">
               <span className="gh-choice-title">The repository this folder already has</span>
               <span className="gh-choice-sub mono">{detected}</span>
@@ -102,7 +112,7 @@ export function ConnectDialog({
         )}
 
         <label className="gh-choice" data-on={choice === "create" ? "" : undefined}>
-          <input type="radio" name="gh-choice" checked={choice === "create"} onChange={() => setChoice("create")} />
+          <input type="radio" name="gh-choice" checked={choice === "create"} onChange={() => choose("create")} />
           <span className="gh-choice-text">
             <span className="gh-choice-title">A new repository</span>
             {choice === "create" && (
@@ -117,29 +127,34 @@ export function ConnectDialog({
           </span>
         </label>
 
-        <label className="gh-choice" data-on={choice === "existing" ? "" : undefined}>
-          <input type="radio" name="gh-choice" checked={choice === "existing"} onChange={() => setChoice("existing")} />
+        {/* Not a label all through: the list inside takes its own clicks. */}
+        <div className="gh-choice" data-on={choice === "existing" ? "" : undefined} onClick={() => choose("existing")}>
+          <input
+            id={existingId}
+            type="radio"
+            name="gh-choice"
+            checked={choice === "existing"}
+            onChange={() => choose("existing")}
+          />
           <span className="gh-choice-text">
-            <span className="gh-choice-title">A repository I already have</span>
+            <label className="gh-choice-title" htmlFor={existingId}>
+              A repository I already have
+            </label>
             {choice === "existing" && (
               <span className="gh-choice-fields">
-                <span className="field">
-                  <span>Repository</span>
-                  <input
-                    value={existing}
-                    onChange={(e) => setExisting(e.target.value)}
-                    placeholder="owner/name, or its address"
-                    spellCheck={false}
-                    autoFocus
-                  />
-                </span>
-                {existing.trim() && !onGithub(existing.trim()) && !existing.includes("github.com") && (
-                  <span className="hint">Not on GitHub? Any git address works too.</span>
-                )}
+                <RepoPicker
+                  signedIn={signedIn}
+                  sameName={repoName(projectName)}
+                  value={existing}
+                  onChange={setExisting}
+                  onSubmit={() => {
+                    if (!busy && !blocked) void connect();
+                  }}
+                />
               </span>
             )}
           </span>
-        </label>
+        </div>
       </div>
 
       {error && (
