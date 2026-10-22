@@ -4419,7 +4419,7 @@ label.gh-choice-title {
 
 .about-studio {
   align-self: flex-start;
-  width: clamp(190px, 24vw, 320px);
+  width: clamp(220px, 28vw, 420px);
   height: auto;
   filter: drop-shadow(0 10px 22px rgba(8, 10, 24, 0.45));
   animation: about-rise 700ms var(--ease-out) 150ms both;
