@@ -142,10 +142,24 @@ export function ProjectPicker({ root, name, disabled = false, serverId, onOpen, 
 
       {open && (
         <div className="picker-pop project-pop" role="listbox" aria-label="Projects">
+          {/* First, so it's there without scrolling past a long list. */}
+          <button
+            type="button"
+            className="picker-item picker-action"
+            onClick={() => choose(onBrowse)}
+            onMouseEnter={(event) => event.currentTarget.focus()}
+          >
+            <span className="picker-icon">
+              <FolderOpen size={16} strokeWidth={1.75} />
+            </span>
+            <span className="picker-name">Open folder…</span>
+          </button>
+          <div className="ctx-sep" role="separator" />
           {pairs === null ? (
             <p className="picker-note">Loading…</p>
           ) : (
-            pairs.map((pair) => {
+            // Folders that are gone go last.
+            [...pairs.filter((p) => p.exists), ...pairs.filter((p) => !p.exists)].map((pair) => {
               const selected = sameLocal(pair.root, root);
               const paired = pair.exists && Boolean(pair.destinations[serverId ?? pair.hostId ?? ""]);
               return (
@@ -156,7 +170,9 @@ export function ProjectPicker({ root, name, disabled = false, serverId, onOpen, 
                     aria-selected={selected}
                     className="picker-item"
                     disabled={!pair.exists}
-                    data-tip={pair.root}
+                    // The full path on a resting pointer only: the app's tip shows on focus and
+                    // would cover the list as it opens.
+                    title={pair.root}
                     onClick={() => choose(() => !selected && onOpen(pair.root))}
                     onMouseEnter={(event) => event.currentTarget.focus()}
                   >
@@ -186,18 +202,6 @@ export function ProjectPicker({ root, name, disabled = false, serverId, onOpen, 
               );
             })
           )}
-          <div className="ctx-sep" role="separator" />
-          <button
-            type="button"
-            className="picker-item picker-action"
-            onClick={() => choose(onBrowse)}
-            onMouseEnter={(event) => event.currentTarget.focus()}
-          >
-            <span className="picker-icon">
-              <FolderOpen size={16} strokeWidth={1.75} />
-            </span>
-            <span className="picker-name">Open folder…</span>
-          </button>
         </div>
       )}
     </div>
