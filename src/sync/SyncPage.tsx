@@ -27,8 +27,7 @@ type SyncPageProps = {
 };
 
 export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPageProps) {
-  const { project, hosts, connected, connectionsKnown, connecting, reconnecting, connect, setTarget, openProject, notify } =
-    useAppData();
+  const { project, hosts, connected, connectionsKnown, connecting, reconnecting, connect, setTarget, openProject } = useAppData();
   // The server shown when there's no project to remember it.
   const [looseHostId, setLooseHostId] = useState<string | null>(null);
   const [addingHost, setAddingHost] = useState(false);
@@ -50,7 +49,7 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
   const selectHost = (id: string) => void switchServer(id);
   /** Another server picked (only ever by hand): its own state comes back, the project last open
    *  with it, at its folder there. With none on record, this project stays if it has a folder
-   *  there, else the most recent one that has opens (Stay on … keeps this one). */
+   *  there, else the most recent one that has opens. */
   const switchServer = async (id: string) => {
     setLooseHostId(id);
     if (project?.hostId === id) return;
@@ -59,20 +58,11 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
     const last = pairs.find((p) => p.exists && p.lastFor.includes(id));
     const other = last ?? (here?.destinations[id] ? undefined : lastOn(pairs, id));
     if (other && !(project && sameLocal(other.root, project.root))) {
-      const from = project;
-      if (!(await openProject(other.root, id))) return;
-      const server = hosts.find((h) => h.id === id)?.label ?? "that server";
-      notify(
-        `Opened ${other.name}, the project on ${server}`,
-        "info",
-        from ? { label: `Stay on ${from.name}`, run: () => void stay(from.root, id) } : undefined,
-      );
+      await openProject(other.root, id);
       return;
     }
     if (project) await setTarget(id, null);
   };
-  /** Back to the project that was open, on the server picked (to give it a folder there). */
-  const stay = (root: string, id: string) => openProject(root, id);
 
   useEffect(() => {
     if (!requestedHostId) return;

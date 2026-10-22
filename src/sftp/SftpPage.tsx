@@ -87,11 +87,6 @@ export function SftpPage({ shown }: { shown: boolean }) {
     if (pairs === null || localDir === null) return;
     const before = followed.current;
     followed.current = localDir;
-    // Opened to stay where the server is (Back, after switching servers): nothing follows.
-    if (quiet.current !== null && sameLocal(quiet.current, localDir)) {
-      quiet.current = null;
-      return;
-    }
     const onHost = hostIdRef.current;
     const pair = onHost ? pairFor(pairs, localDir, onHost) : null;
     const dir = pair && onHost ? pair.destinations[onHost] : undefined;
@@ -112,16 +107,11 @@ export function SftpPage({ shown }: { shown: boolean }) {
     if (target !== remoteDirRef.current) go(onHost, target, dir);
   }, [localDir, pairs]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The local side, sent to a folder from here (switching servers); `quiet`: without the server following.
+  // The local side, sent to a folder from here (switching servers).
   const [localGoTo, setLocalGoTo] = useState<{ path: string; seq: number } | null>(null);
-  const quiet = useRef<string | null>(null);
-  const openLocal = (path: string, follow = true) => {
-    quiet.current = follow ? null : path;
-    setLocalGoTo({ path, seq: ++goSeq.current });
-  };
 
   /** Another server picked here. In a project folder with no folder on that server, the left side
-   *  goes to the project last used with it, so both sides match (Back undoes that). */
+   *  goes to the project last used with it, so both sides match. */
   const chooseServer = (id: string) => {
     selectHost(id);
     if (!pairs || localDir === null) return;
@@ -129,13 +119,7 @@ export function SftpPage({ shown }: { shown: boolean }) {
     if (!pair || pair.destinations[id]) return;
     const other = lastOn(pairs, id, true);
     if (!other || sameLocal(other.root, pair.root)) return;
-    const from = localDir;
-    openLocal(other.root);
-    const server = hosts.find((h) => h.id === id)?.label ?? "that server";
-    notify(`Opened ${other.name}, the folder paired with ${server}`, "info", {
-      label: `Back to ${pair.name}`,
-      run: () => openLocal(from, false),
-    });
+    setLocalGoTo({ path: other.root, seq: ++goSeq.current });
   };
 
   // Another server picked: a paired folder goes to its folder on that one, if it has one there.
