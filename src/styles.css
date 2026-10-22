@@ -1204,9 +1204,9 @@ input::-ms-clear {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 760px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 28px 28px 56px;
+  padding: 28px 36px 56px;
 }
 
 .settings-head h1 {
