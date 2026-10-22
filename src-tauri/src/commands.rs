@@ -386,7 +386,7 @@ pub fn project_set_target(
 
 /// Excludes project paths (files or folders) from pushing, or, with `exclude` false, includes
 /// them again. Excluded paths stop counting as changes; a folder covers everything inside it.
-/// .git and node_modules folders start out excluded; including one is remembered.
+/// .git, .venv and node_modules folders start out excluded; including one is remembered.
 #[tauri::command]
 pub async fn project_exclude(
     app: AppHandle,

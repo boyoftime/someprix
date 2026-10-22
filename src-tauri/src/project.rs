@@ -34,8 +34,8 @@ const HIDDEN: &[&str] = &["*.someprix-part"];
 
 /// Folders that start out excluded from pushing, wherever they are in the project; the user can
 /// include them. A .git folder on a web server gives the code and its history away, and
-/// node_modules is installed on the server instead (and is huge).
-const EXCLUDED_AT_FIRST: &[&str] = &[".git", "node_modules"];
+/// node_modules and a Python .venv are made on the server instead (and are huge).
+const EXCLUDED_AT_FIRST: &[&str] = &[".git", ".venv", "node_modules"];
 
 /// What versions before 1.10.1 hid from Sync on top of .gitignore (see adopt_hidden).
 const HIDDEN_BEFORE: &[&str] = &[
@@ -349,7 +349,7 @@ impl Project {
         let inside = |item: &str, folder: &str| item == folder || item.strip_prefix(folder).is_some_and(|rest| rest.starts_with('/'));
         for path in paths.iter().map(|p| p.trim_matches('/')).filter(|p| !p.is_empty()) {
             if exclude {
-                // An included .git or node_modules goes back to how it started.
+                // An included .git, .venv or node_modules goes back to how it started.
                 self.included.retain(|item| item != path);
                 // Already covered (by an excluded folder, or one excluded at first): nothing to add.
                 if excluded_at_first(path, &self.included).is_some() || self.excluded.iter().any(|item| inside(path, item)) {
