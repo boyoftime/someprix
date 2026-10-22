@@ -1,9 +1,11 @@
+import type { CSSProperties } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { version } from "../../package.json";
 import { Logo } from "./Logo";
 import { GithubMark } from "../github/GithubMark";
 import photo from "../assets/about-photo.jpg";
 import studio from "../assets/someless-tricks.png";
+import icon from "../assets/someprix-icon.png";
 
 const REPOSITORY = "https://github.com/boyoftime/someprix";
 
@@ -17,7 +19,10 @@ export function AboutPage() {
       </div>
       <div className="about-panel">
         <div className="about-app">
-          <Logo size={68} className="about-icon" />
+          {/* The icon's own picture shapes its shine (see .about-icon::after). */}
+          <span className="about-icon" style={{ "--icon": `url(${icon})` } as CSSProperties}>
+            <Logo size={68} />
+          </span>
           <div className="about-app-text">
             <h1 className="about-name">Someprix</h1>
             <p className="about-version">Version {version}</p>

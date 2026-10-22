@@ -4443,9 +4443,23 @@ label.gh-choice-title {
   min-width: 0;
 }
 
+/* The app icon glows blue, with a still shine across its top-left. */
 .about-icon {
+  position: relative;
+  display: grid;
   flex: none;
-  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 0 10px rgba(64, 140, 255, 0.95)) drop-shadow(0 0 28px rgba(56, 132, 255, 0.75))
+    drop-shadow(0 0 56px rgba(56, 132, 255, 0.4));
+}
+
+.about-icon::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.14) 30%, rgba(255, 255, 255, 0) 50%);
+  content: "";
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+  pointer-events: none;
 }
 
 .about-app-text {
