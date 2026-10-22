@@ -1,7 +1,7 @@
 //! Commands the frontend calls: saved hosts, server connections, the project folder, and push.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
@@ -361,6 +361,8 @@ pub struct ProjectPair {
     name: String,
     host_id: Option<String>,
     remote_dir: Option<String>,
+    /// Its folder on each server it was paired with (host id → folder), the one in use included.
+    destinations: HashMap<String, String>,
     /// Last opened in Sync (Unix milliseconds); 0 if never.
     opened: u64,
     /// Still there on this computer.
@@ -379,6 +381,7 @@ pub fn project_pairs(state: State<'_, AppState>) -> Vec<ProjectPair> {
         .map(|(root, link)| ProjectPair {
             name: Path::new(&root).file_name().map_or_else(|| root.clone(), |n| n.to_string_lossy().into_owned()),
             exists: Path::new(&root).is_dir(),
+            destinations: link.all_destinations(),
             root,
             host_id: link.host_id,
             remote_dir: link.remote_dir,
@@ -390,19 +393,17 @@ pub fn project_pairs(state: State<'_, AppState>) -> Vec<ProjectPair> {
     pairs
 }
 
-/// Pairs a folder on this computer with a server folder, or with no host unpairs it; for any
-/// folder, not only the project open in Sync (where this is its destination).
+/// Pairs a folder on this computer with a folder on `host_id` (and uses that server for it from
+/// now on), or with no folder unpairs it from that server; for any folder, not only the project
+/// open in Sync (where this is its destination).
 #[tauri::command]
-pub fn project_pair_set(
-    state: State<'_, AppState>,
-    root: String,
-    host_id: Option<String>,
-    remote_dir: Option<String>,
-) -> Result<(), String> {
+pub fn project_pair_set(state: State<'_, AppState>, root: String, host_id: String, remote_dir: Option<String>) -> Result<(), String> {
     let root = root_key(&root);
     let mut link = state.store.project_link(&root);
-    link.remote_dir = host_id.as_ref().and(remote_dir);
-    link.host_id = host_id;
+    match remote_dir {
+        Some(dir) => link.point_at(Some(host_id), Some(dir)),
+        None => link.unpair(&host_id),
+    }
     link.hidden = false;
     state.store.set_project_link(&root, link)
 }
@@ -444,17 +445,19 @@ pub fn project_list(state: State<'_, AppState>, dir: String) -> Result<Vec<Local
     guard.as_ref().ok_or("No project open")?.list(&dir)
 }
 
+/// The open project's server and folder. Without a folder, the one it had on that server before
+/// comes back (each server keeps its own).
 #[tauri::command]
 pub fn project_set_target(
     state: State<'_, AppState>,
     host_id: Option<String>,
     remote_dir: Option<String>,
-) -> Result<(), String> {
+) -> Result<ProjectInfo, String> {
     let root = project_info(&state).ok_or("No project open")?.root;
     let mut link = state.store.project_link(&root);
-    link.host_id = host_id;
-    link.remote_dir = remote_dir;
-    state.store.set_project_link(&root, link)
+    link.point_at(host_id, remote_dir);
+    state.store.set_project_link(&root, link)?;
+    project_info(&state).ok_or_else(|| "Project closed".into())
 }
 
 /// Excludes project paths (files or folders) from pushing, or, with `exclude` false, includes

@@ -31,15 +31,22 @@ function inside(root: string, path: string): string | null {
 export function pairFor(pairs: ProjectPair[], path: string): ProjectPair | null {
   let best: ProjectPair | null = null;
   for (const pair of pairs) {
-    if (!pair.hostId || !pair.remoteDir || inside(pair.root, path) === null) continue;
+    if (!Object.keys(pair.destinations).length || inside(pair.root, path) === null) continue;
     if (!best || comparable(pair.root).length > comparable(best.root).length) best = pair;
   }
   return best;
 }
 
-/** The server folder that matches a local folder in `pair`: its server folder, plus the same way down. */
-export function mirror(pair: ProjectPair, path: string): string {
+/** Where a pair goes: its folder on `hostId` if it has one there, else on the server it uses. */
+export function placeFor(pair: ProjectPair, hostId: string | null): { hostId: string; dir: string } | null {
+  if (hostId && pair.destinations[hostId]) return { hostId, dir: pair.destinations[hostId] };
+  if (pair.hostId && pair.remoteDir) return { hostId: pair.hostId, dir: pair.remoteDir };
+  const [first] = Object.entries(pair.destinations);
+  return first ? { hostId: first[0], dir: first[1] } : null;
+}
+
+/** The server folder that matches a local folder in `pair`: `dir` (its folder there), plus the same way down. */
+export function mirror(pair: ProjectPair, dir: string, path: string): string {
   const rest = inside(pair.root, path);
-  const top = pair.remoteDir ?? "/";
-  return rest ? joinRemote(top, rest) : top;
+  return rest ? joinRemote(dir, rest) : dir;
 }

@@ -326,8 +326,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setTarget = useCallback(async (hostId: string | null, remoteDir: string | null) => {
-    await api.setTarget(hostId, remoteDir);
-    setProject((p) => (p ? { ...p, hostId, remoteDir } : p));
+    // The folder may come back from before (each server keeps its own).
+    setProject(await api.setTarget(hostId, remoteDir));
   }, []);
 
   const excludeFromPush = useCallback(

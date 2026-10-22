@@ -150,8 +150,11 @@ export type ProjectChoice = { root: string; name: string; backup: boolean | null
 export type ProjectPair = {
   root: string;
   name: string;
+  /** The server and folder in use. */
   hostId: string | null;
   remoteDir: string | null;
+  /** Its folder on each server it was paired with (host id → folder), the one in use included. */
+  destinations: Record<string, string>;
   /** Last opened in Sync (Unix milliseconds); 0 if never. */
   opened: number;
   /** Still there on this computer. */
@@ -240,12 +243,13 @@ export const api = {
   currentProject: () => call<ProjectInfo | null>("project_current"),
   closeProject: () => call<void>("project_close"),
   listLocal: (dir: string) => call<LocalEntry[]>("project_list", { dir }),
+  /** The open project's server and folder; with no folder, the one it had on that server before. */
   setTarget: (hostId: string | null, remoteDir: string | null) =>
-    call<void>("project_set_target", { hostId, remoteDir }),
-  /** Every project folder on the list, most recently opened first, with its server folder. */
+    call<ProjectInfo>("project_set_target", { hostId, remoteDir }),
+  /** Every project folder on the list, most recently opened first, with its server folders. */
   projectPairs: () => call<ProjectPair[]>("project_pairs"),
-  /** Pairs any local folder with a server folder (null host: unpairs it). */
-  pairFolder: (root: string, hostId: string | null, remoteDir: string | null) =>
+  /** Pairs any local folder with a folder on that server (null folder: unpairs it from that server). */
+  pairFolder: (root: string, hostId: string, remoteDir: string | null) =>
     call<void>("project_pair_set", { root, hostId, remoteDir }),
   /** Takes a folder off the list of projects; opening it again puts it back. */
   forgetProject: (root: string) => call<void>("project_forget", { root }),

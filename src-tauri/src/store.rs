@@ -61,6 +61,49 @@ pub struct ProjectLink {
     /// Taken off the list of projects (opening it again puts it back).
     #[serde(default)]
     pub hidden: bool,
+    /// The folder on each server this one was paired with (host id → folder), so switching
+    /// servers brings that server's folder back. `host_id` and `remote_dir` are the pair in use.
+    #[serde(default)]
+    pub destinations: HashMap<String, String>,
+}
+
+impl ProjectLink {
+    /// Pairs with `host_id` from now on: at `remote_dir`, or without one, the folder it had on
+    /// that server before (if any). Each server keeps its own folder; no host unpairs for now.
+    pub fn point_at(&mut self, host_id: Option<String>, remote_dir: Option<String>) {
+        self.keep_current();
+        self.remote_dir = match (&host_id, remote_dir) {
+            (Some(host), Some(dir)) => {
+                self.destinations.insert(host.clone(), dir.clone());
+                Some(dir)
+            }
+            (Some(host), None) => self.destinations.get(host).cloned(),
+            (None, _) => None,
+        };
+        self.host_id = host_id;
+    }
+
+    /// Forgets the folder on `host`, and stops using that server if it's the one in use.
+    pub fn unpair(&mut self, host: &str) {
+        self.destinations.remove(host);
+        if self.host_id.as_deref() == Some(host) {
+            self.host_id = None;
+            self.remote_dir = None;
+        }
+    }
+
+    /// Every server's folder, the one in use included (records from before 1.10.1 only have that).
+    pub fn all_destinations(&self) -> HashMap<String, String> {
+        let mut all = self.destinations.clone();
+        if let (Some(host), Some(dir)) = (&self.host_id, &self.remote_dir) {
+            all.entry(host.clone()).or_insert_with(|| dir.clone());
+        }
+        all
+    }
+
+    fn keep_current(&mut self) {
+        self.destinations = self.all_destinations();
+    }
 }
 
 /// Which pushes keep a backup of the server files they replace or delete.
