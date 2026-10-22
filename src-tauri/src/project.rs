@@ -287,6 +287,12 @@ impl Project {
             && self.ignore.matched_path_or_any_parents(path, is_dir).is_ignore()
     }
 
+    /// Whether the project file `rel` is ignored (by .gitignore or the built-in rules), whether or
+    /// not it still exists. Ignored files are never changes: not new, not changed, not deleted.
+    fn ignores(&self, rel: &str) -> bool {
+        self.ignore.matched_path_or_any_parents(self.root.join(rel), false).is_ignore()
+    }
+
     /// Every tracked file under `dir` (absolute), as project-relative paths.
     fn walk(&self, dir: &Path) -> Vec<String> {
         let ignore = self.ignore.clone();
@@ -372,8 +378,9 @@ impl Project {
         let gone: Vec<String> = self
             .baseline
             .keys()
-            // Excluded files aren't deleted, just left out.
-            .filter(|rel| !present_set.contains(rel) && !is_excluded(&self.excluded, rel))
+            // Excluded files aren't deleted, just left out; nor are files ignored since they were
+            // last pushed (a .env added to .gitignore is still there).
+            .filter(|rel| !present_set.contains(rel) && !is_excluded(&self.excluded, rel) && !self.ignores(rel))
             .cloned()
             .collect();
         for rel in gone {
@@ -386,6 +393,12 @@ impl Project {
 
     /// Re-checks the given absolute paths (files or folders) after the watcher saw them change.
     pub fn refresh(&mut self, paths: &[PathBuf]) {
+        // A changed .gitignore changes what's tracked: read it again and re-check everything.
+        if paths.iter().any(|path| rel_path(&self.root, path).as_deref() == Some(".gitignore")) {
+            self.ignore = build_ignore(&self.root);
+            self.rescan();
+            return;
+        }
         let mut touched = false;
         for path in paths {
             let Some(rel) = rel_path(&self.root, path) else {
@@ -423,7 +436,7 @@ impl Project {
     /// Updates the change state of one file. Returns true if the baseline was touched (a file
     /// was re-saved with identical content, so only its modified time moved).
     fn check(&mut self, rel: &str) -> bool {
-        if is_excluded(&self.excluded, rel) {
+        if is_excluded(&self.excluded, rel) || self.ignores(rel) {
             self.changes.remove(rel);
             return false;
         }
