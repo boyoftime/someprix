@@ -21,9 +21,7 @@ export function AboutPage() {
           <div className="about-app-text">
             <h1 className="about-name">
               Someprix
-              <span className="about-version">
-                Version <span className="about-version-number">{version}</span>
-              </span>
+              <span className="about-version">Version {version}</span>
             </h1>
             <p className="about-tagline">An open-source, modern SSH client, with Sync, SFTP, a terminal and an editor in one app.</p>
           </div>

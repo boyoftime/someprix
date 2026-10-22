@@ -4455,8 +4455,8 @@ label.gh-choice-title {
 .about-name {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
+  align-items: baseline;
+  gap: 2px 14px;
   margin: 0;
   font-size: clamp(26px, 2.6vw, 34px);
   font-weight: 750;
@@ -4464,24 +4464,12 @@ label.gh-choice-title {
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
 }
 
+/* The version, beside the name: quieter, on the same line. */
 .about-version {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 4px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  font-size: 12.5px;
-  font-weight: 650;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 15px;
+  font-weight: 500;
   letter-spacing: 0;
-  text-shadow: none;
-  backdrop-filter: blur(10px);
-}
-
-.about-version-number {
-  font-family: var(--font-mono);
-  font-size: 12px;
 }
 
 .about-tagline {

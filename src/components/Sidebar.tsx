@@ -12,7 +12,6 @@ import {
   Settings,
   SquareTerminal,
 } from "lucide-react";
-import { version } from "../../package.json";
 import { useEditor } from "../editor/EditorProvider";
 import { useUpdates } from "../update/UpdateProvider";
 import { useSpin } from "../ui/useSpin";
@@ -151,7 +150,6 @@ export function Sidebar({ page, onNavigate, pending, collapsed, onToggleCollapse
       )}
 
       <div className="sidebar-foot">
-        <span className="nav-label">Version {version}</span>
         <button
           type="button"
           className="icon-btn sidebar-check"
