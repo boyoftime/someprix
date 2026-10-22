@@ -11,7 +11,8 @@ type Anchor = { text: string; rect: DOMRect };
 
 /**
  * App-styled tooltips for any element with a `data-tip` attribute, replacing the browser's
- * native `title` tooltips. Mount once inside the window frame.
+ * native `title` tooltips. Mount once inside the window frame. `data-tip-on="hover"` shows it
+ * for the pointer only, not keyboard focus (list items that get focus as a list opens).
  */
 export function Tooltips() {
   const [tip, setTip] = useState<Anchor | null>(null);
@@ -64,7 +65,12 @@ export function Tooltips() {
     };
     const onFocus = (event: FocusEvent) => {
       const el = target(event.target);
-      if (el && el.matches(":focus-visible")) schedule(el);
+      if (el && el.matches(":focus-visible") && el.dataset.tipOn !== "hover") schedule(el);
+    };
+    // Focus leaving an element takes its own tip, not one the pointer brought up elsewhere (lists
+    // move focus to the row under the pointer).
+    const onBlur = (event: FocusEvent) => {
+      if (current && event.target instanceof Node && current.contains(event.target)) hide();
     };
     const onPress = (event: PointerEvent) => {
       suppressed = target(event.target);
@@ -76,7 +82,7 @@ export function Tooltips() {
 
     document.addEventListener("pointerover", onOver);
     document.addEventListener("focusin", onFocus);
-    document.addEventListener("focusout", hide);
+    document.addEventListener("focusout", onBlur);
     document.addEventListener("pointerdown", onPress, true);
     document.addEventListener("keydown", onKey, true);
     document.addEventListener("scroll", hide, true);
@@ -86,7 +92,7 @@ export function Tooltips() {
       window.clearTimeout(timer);
       document.removeEventListener("pointerover", onOver);
       document.removeEventListener("focusin", onFocus);
-      document.removeEventListener("focusout", hide);
+      document.removeEventListener("focusout", onBlur);
       document.removeEventListener("pointerdown", onPress, true);
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("scroll", hide, true);

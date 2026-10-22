@@ -170,9 +170,10 @@ export function ProjectPicker({ root, name, disabled = false, serverId, onOpen, 
                     aria-selected={selected}
                     className="picker-item"
                     disabled={!pair.exists}
-                    // The full path on a resting pointer only: the app's tip shows on focus and
-                    // would cover the list as it opens.
-                    title={pair.root}
+                    // The full path for a resting pointer only (focus lands here as the list
+                    // opens, and a tip then would cover it).
+                    data-tip={pair.root}
+                    data-tip-on="hover"
                     onClick={() => choose(() => !selected && onOpen(pair.root))}
                     onMouseEnter={(event) => event.currentTarget.focus()}
                   >
