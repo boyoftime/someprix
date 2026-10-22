@@ -178,3 +178,11 @@ npm run release -- --notes "What changed"
 ```
 
 This builds the Windows installer, while GitHub builds the Mac and Linux ones from the same commit (`.github/workflows/build.yml`). It waits for those, signs every update file with the key in `keys/someprix.key` (which never leaves your computer and is never committed), and publishes all of them with `latest.json`, the file installed copies check for updates. It needs the [GitHub CLI](https://cli.github.com/). Add `--windows-only` to release for Windows alone.
+
+## License
+
+Someprix is free software, licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+
+In short: you can use it, study it, share it and change it. If you share a changed version, or run one for other people over a network, you must also share its source code under the same license. It comes with no warranty.
+
+Copyright © 2026 Someless Ado.
