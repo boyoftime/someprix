@@ -9,9 +9,12 @@ type DialogProps = {
   /** Keeps Escape and the backdrop from closing it, e.g. while a push is running. */
   locked?: boolean;
   width?: number;
+  /** A picture across the top, above the title. */
+  hero?: ReactNode;
+  className?: string;
 };
 
-export function Dialog({ title, onClose, children, footer, locked = false, width = 460 }: DialogProps) {
+export function Dialog({ title, onClose, children, footer, locked = false, width = 460, hero, className }: DialogProps) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
 
@@ -45,13 +48,14 @@ export function Dialog({ title, onClose, children, footer, locked = false, width
     >
       <div
         ref={panel}
-        className="dialog"
+        className={className ? `dialog ${className}` : "dialog"}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         style={{ width }}
         tabIndex={-1}
       >
+        {hero && <div className="dialog-hero">{hero}</div>}
         <header className="dialog-head">
           <h2 id={titleId}>{title}</h2>
           <button type="button" className="icon-btn dialog-close" onClick={onClose} disabled={locked} aria-label="Close">
