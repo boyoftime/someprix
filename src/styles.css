@@ -1271,6 +1271,10 @@ input::-ms-clear {
   --tone: #e5627a;
 }
 
+.set-icon[data-tone="teal"] {
+  --tone: #2fb5a5;
+}
+
 .set-card-text h2 {
   margin: 0;
   font-size: 15px;

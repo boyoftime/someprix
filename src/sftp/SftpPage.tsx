@@ -10,6 +10,7 @@ import { settling, useTransferSpeed } from "../ui/useTransferSpeed";
 import { useFast } from "../ui/FastToggle";
 import { setActivity } from "../state/activity";
 import { remember, remembered } from "../lib/storage";
+import { SFTP_FOLLOWS_SYNC } from "../settings/SettingsPage";
 import type { MenuItem } from "../ui/ContextMenu";
 import { DragProvider, type DragKind } from "./drag";
 import { LocalBrowser, type Pairing, type Revealed } from "./LocalBrowser";
@@ -124,11 +125,11 @@ export function SftpPage({ shown }: { shown: boolean }) {
     if (other && !sameLocal(other.root, here.root)) openLocal(other.root);
   };
 
-  // Switching in Sync carries over here: its project on the left, its server on the right at
-  // the project's folder there (when it has one).
+  // With "Follow Sync" on (Settings; off at first), switching in Sync carries over here: its
+  // project on the left, its server on the right at the project's folder there (when it has one).
   const fromSync = useRef<string | null>(null);
   useEffect(() => {
-    if (!project) return;
+    if (!project || remembered(SFTP_FOLLOWS_SYNC) !== "on") return;
     // (The server counts once the host list knows it.)
     const server = project.hostId && hosts.some((h) => h.id === project.hostId) ? project.hostId : null;
     const key = `${project.root}|${server}|${project.remoteDir}`;
@@ -137,7 +138,7 @@ export function SftpPage({ shown }: { shown: boolean }) {
     if (server && server !== hostIdRef.current) selectHost(server);
     if (localDir === null || !sameLocal(localDir, project.root)) openLocal(project.root);
     if (server && project.remoteDir) go(server, project.remoteDir);
-  }, [project?.root, project?.hostId, project?.remoteDir, hosts]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [project?.root, project?.hostId, project?.remoteDir, hosts, shown]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Another server picked: a paired folder goes to its folder on that one, if it has one there.
   const shownHost = useRef(hostId);
