@@ -161,10 +161,15 @@ pub fn open(
         .watch(root, RecursiveMode::Recursive)
         .map_err(|e| format!("Watch failed: {e}"))?;
 
-    let saved: Option<SavedBaseline> = fs::read_to_string(&baseline_file)
+    // Kept beside the record versions before 1.10.1 read, which is left as it was: going back to
+    // one of those doesn't lose what's changed. The first time, it starts from that one.
+    let record_file = baseline_file.with_extension("v2.json");
+    let saved: Option<SavedBaseline> = fs::read_to_string(&record_file)
+        .or_else(|_| fs::read_to_string(&baseline_file))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok());
     let server_file = baseline_file.with_extension("server.json");
+    let baseline_file = record_file;
     let server: ServerRecord = fs::read_to_string(&server_file)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
