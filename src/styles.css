@@ -1200,26 +1200,158 @@ input::-ms-clear {
   padding: 0;
 }
 
-.settings-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 28px 36px 56px;
+/* Settings: the sections on the left, the one open on the right */
+.settings-page.settings-split {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  overflow: hidden;
 }
 
-.settings-head h1 {
-  margin: 0;
-  font-size: 24px;
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 26px 12px 16px;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+}
+
+.settings-nav-title {
+  margin: 0 10px 16px;
+  font-size: 22px;
   font-weight: 750;
   letter-spacing: -0.02em;
 }
 
-.settings-head p {
-  margin: 4px 0 8px;
+.settings-nav-item {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 11px;
+  height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.settings-nav-item[aria-current="page"] {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.settings-nav-item .set-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.settings-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav-note {
+  margin: auto 10px 0;
+  padding-top: 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-main {
+  min-height: 0;
+  overflow: auto;
+}
+
+.settings-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 780px;
+  padding: 30px 40px 56px;
+  animation: settings-in 160ms var(--ease-out);
+}
+
+@keyframes settings-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.settings-section-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.settings-section-head .set-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.settings-section-head h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+}
+
+.settings-section-head p {
+  margin: 3px 0 0;
   color: var(--text-muted);
   font-size: 13px;
+  line-height: 1.45;
+}
+
+/* A narrow window: the sections as icons (each names itself on hover). */
+@media (max-width: 1000px) {
+  .settings-page.settings-split {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    align-items: center;
+    padding: 18px 8px;
+  }
+
+  .settings-nav-title,
+  .settings-nav-label,
+  .settings-nav-note {
+    display: none;
+  }
+
+  .settings-nav-item {
+    justify-content: center;
+    width: 44px;
+    padding: 0;
+  }
+
+  .settings-inner {
+    padding: 24px 24px 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-inner {
+    animation: none;
+  }
 }
 
 /* One card per subject */
@@ -1227,13 +1359,6 @@ input::-ms-clear {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--dialog);
-}
-
-.set-card-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 18px 20px 10px;
 }
 
 .set-icon {
@@ -1300,6 +1425,11 @@ input::-ms-clear {
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
+}
+
+/* In Settings, inset like the rows around it. */
+.set-card-body > .gh-signin {
+  padding: 12px;
 }
 
 .gh-signin-btn svg {
@@ -1574,23 +1704,10 @@ input::-ms-clear {
   font-weight: 600;
 }
 
-.set-card-text h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.set-card-text p {
-  margin: 3px 0 0;
-  color: var(--text-muted);
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
 .set-card-body {
   display: flex;
   flex-direction: column;
-  padding: 2px 8px 8px;
+  padding: 8px;
 }
 
 /* Hairlines between the rows of a card, inset from its edges */

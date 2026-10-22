@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type KeyboardEvent, type ReactNode } from "react";
 import { ArchiveRestore, Download, FileCode, FolderSync, Monitor, Moon, Palette, RefreshCw, Search, SquareTerminal, Sun, Zap, type LucideIcon } from "lucide-react";
 import { version } from "../../package.json";
 import { api, type BackupMode, type GithubState, type ProjectChoice, type Settings } from "../lib/api";
@@ -23,6 +23,11 @@ export const SFTP_FOLLOWS_SYNC = "someprix.sftp.followSync";
 const FAST_PUSH = "someprix.push.fast";
 const FAST_SFTP = "someprix.sftp.fast";
 
+const LAST_SECTION = "someprix.settings.section";
+
+type SectionId = "appearance" | "backups" | "transfers" | "sftp" | "github" | "terminal" | "editor" | "updates";
+type SectionIcon = LucideIcon | ComponentType<{ size?: number; strokeWidth?: number }>;
+
 /** On unless switched off. */
 export const isOn = (key: string) => remembered(key) !== "off";
 
@@ -37,36 +42,6 @@ const THEMES: [ThemePref, string, LucideIcon][] = [
   ["light", "Light", Sun],
   ["dark", "Dark", Moon],
 ];
-
-/** One group of settings: an icon, a title, a line on what it's for, then its rows. */
-function Card({
-  icon: Icon,
-  tone,
-  title,
-  about,
-  children,
-}: {
-  icon: LucideIcon | ComponentType<{ size?: number; strokeWidth?: number }>;
-  tone: string;
-  title: string;
-  about: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="set-card" aria-label={title}>
-      <header className="set-card-head">
-        <span className="set-icon" data-tone={tone} aria-hidden="true">
-          <Icon size={18} strokeWidth={1.9} />
-        </span>
-        <span className="set-card-text">
-          <h2>{title}</h2>
-          <p>{about}</p>
-        </span>
-      </header>
-      <div className="set-card-body">{children}</div>
-    </section>
-  );
-}
 
 /** A labelled row: what it is on the left, the control on the right. */
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -131,6 +106,12 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
   const [settings, setSettings] = useState<Settings | null>(null);
   const [projects, setProjects] = useState<ProjectChoice[]>([]);
   const [filter, setFilter] = useState("");
+  // The section showing, remembered between visits.
+  const [section, setSection] = useState<SectionId>(() => (remembered(LAST_SECTION) as SectionId | null) ?? "appearance");
+  const openSection = (id: SectionId) => {
+    setSection(id);
+    remember(LAST_SECTION, id);
+  };
   // The GitHub account (null: signed out), once known.
   const [github, setGithub] = useState<GithubState | null>(null);
   const signOut = async () => {
@@ -203,174 +184,205 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
   const on = settings !== null && settings.backups !== "off";
   const backedUp = (project: ProjectChoice) => project.backup ?? settings?.backups === "all";
 
-  return (
-    <div className="page settings-page">
-      <div className="settings-inner">
-        <header className="settings-head">
-          <h1>Settings</h1>
-          <p>Changes take effect as you make them.</p>
-        </header>
-
-        <Card icon={Palette} tone="violet" title="Appearance" about="How Someprix looks.">
-          <Row label="Theme">
-            <div className="segmented set-segmented" role="radiogroup" aria-label="Theme">
-              {THEMES.map(([value, label, Icon]) => (
-                <button key={value} type="button" role="radio" aria-checked={theme === value} onClick={() => onThemeChange(value)}>
-                  <Icon size={14} strokeWidth={2} />
+  const sections: { id: SectionId; title: string; about: string; icon: SectionIcon; tone: string; body: ReactNode }[] = [
+    {
+      id: "appearance",
+      title: "Appearance",
+      about: "How Someprix looks.",
+      icon: Palette,
+      tone: "violet",
+      body: (
+        <Row label="Theme">
+          <div className="segmented set-segmented" role="radiogroup" aria-label="Theme">
+            {THEMES.map(([value, label, Icon]) => (
+              <button key={value} type="button" role="radio" aria-checked={theme === value} onClick={() => onThemeChange(value)}>
+                <Icon size={14} strokeWidth={2} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </Row>
+      ),
+    },
+    {
+      id: "backups",
+      title: "Backups",
+      about: "Keep the files a push replaces or deletes on the server, so the push can be undone from Push history.",
+      icon: ArchiveRestore,
+      tone: "green",
+      body: !settings ? (
+        <Loading />
+      ) : (
+        <>
+          <Row label="Back up before pushing">
+            <div className="segmented set-segmented" role="radiogroup" aria-label="Back up before pushing">
+              {MODES.map(([value, label]) => (
+                <button key={value} type="button" role="radio" aria-checked={settings.backups === value} onClick={() => save({ backups: value })}>
                   {label}
                 </button>
               ))}
             </div>
           </Row>
-        </Card>
 
-        <Card
-          icon={ArchiveRestore}
-          tone="green"
-          title="Backups on the server"
-          about="Keep the files a push replaces or deletes, so the push can be undone from Push history."
-        >
-          {!settings ? (
-            <Loading />
+          {!on ? (
+            <p className="set-note">Pushes replace files on the server without keeping the old ones. Turn backups on to be able to undo a push.</p>
           ) : (
             <>
-              <Row label="Back up before pushing">
-                <div className="segmented set-segmented" role="radiogroup" aria-label="Back up before pushing">
-                  {MODES.map(([value, label]) => (
-                    <button key={value} type="button" role="radio" aria-checked={settings.backups === value} onClick={() => save({ backups: value })}>
-                      {label}
-                    </button>
-                  ))}
+              <div className="set-projects">
+                <div className="set-projects-head">
+                  <span className="set-row-label">
+                    Projects <span className="set-count">{projects.filter(backedUp).length} of {projects.length} backed up</span>
+                  </span>
+                  {projects.length > 5 && (
+                    <label className="set-filter">
+                      <Search size={14} strokeWidth={2} aria-hidden="true" />
+                      <input
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        placeholder="Filter by name"
+                        aria-label="Filter projects by name"
+                        spellCheck={false}
+                      />
+                    </label>
+                  )}
                 </div>
-              </Row>
-
-              {!on ? (
-                <p className="set-note">
-                  Pushes replace files on the server without keeping the old ones. Turn backups on to be able to undo a push.
-                </p>
-              ) : (
-                <>
-                  <div className="set-projects">
-                    <div className="set-projects-head">
-                      <span className="set-row-label">
-                        Projects <span className="set-count">{projects.filter(backedUp).length} of {projects.length} backed up</span>
-                      </span>
-                      {projects.length > 5 && (
-                        <label className="set-filter">
-                          <Search size={14} strokeWidth={2} aria-hidden="true" />
-                          <input
-                            value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
-                            placeholder="Filter by name"
-                            aria-label="Filter projects by name"
-                            spellCheck={false}
-                          />
-                        </label>
-                      )}
-                    </div>
-                    {projects.length === 0 ? (
-                      <p className="set-note">No projects yet. Open a folder in Sync and it shows here.</p>
-                    ) : shown.length === 0 ? (
-                      <p className="set-note">No project matches “{filter.trim()}”.</p>
-                    ) : (
-                      <div className="set-project-list">
-                        {shown.map((project) => (
-                          <Switch
-                            key={project.root}
-                            on={backedUp(project)}
-                            onChange={(value) => setProject(project, value)}
-                            label={project.name}
-                            hint={project.root}
-                          />
-                        ))}
-                      </div>
-                    )}
+                {projects.length === 0 ? (
+                  <p className="set-note">No projects yet. Open a folder in Sync and it shows here.</p>
+                ) : shown.length === 0 ? (
+                  <p className="set-note">No project matches “{filter.trim()}”.</p>
+                ) : (
+                  <div className="set-project-list">
+                    {shown.map((project) => (
+                      <Switch
+                        key={project.root}
+                        on={backedUp(project)}
+                        onChange={(value) => setProject(project, value)}
+                        label={project.name}
+                        hint={project.root}
+                      />
+                    ))}
                   </div>
+                )}
+              </div>
 
-                  <Switch
-                    on={settings.backupSftp}
-                    onChange={(value) => save({ backupSftp: value })}
-                    label="SFTP uploads too"
-                    hint="Files an upload replaces are kept, and the upload can be undone."
-                  />
+              <Switch
+                on={settings.backupSftp}
+                onChange={(value) => save({ backupSftp: value })}
+                label="SFTP uploads too"
+                hint="Files an upload replaces are kept, and the upload can be undone."
+              />
 
-                  <div className="set-limits">
-                    <span className="set-row-label">Keep</span>
-                    <div className="set-limit-grid">
-                      <NumberField label="The last" unit="pushes" value={settings.keepPushes} min={1} max={1000} onSave={(v) => save({ keepPushes: v })} />
-                      <NumberField label="For at most" unit="days" value={settings.keepDays} min={1} max={3650} onSave={(v) => save({ keepDays: v })} />
-                      <NumberField label="Up to" unit="MB a project" value={settings.maxBackupMb} min={1} max={1_000_000} onSave={(v) => save({ maxBackupMb: v })} />
-                      <NumberField label="Skip files over" unit="MB" value={settings.skipOverMb} min={0} max={1_000_000} onSave={(v) => save({ skipOverMb: v })} />
-                    </div>
-                  </div>
+              <div className="set-limits">
+                <span className="set-row-label">Keep</span>
+                <div className="set-limit-grid">
+                  <NumberField label="The last" unit="pushes" value={settings.keepPushes} min={1} max={1000} onSave={(v) => save({ keepPushes: v })} />
+                  <NumberField label="For at most" unit="days" value={settings.keepDays} min={1} max={3650} onSave={(v) => save({ keepDays: v })} />
+                  <NumberField label="Up to" unit="MB a project" value={settings.maxBackupMb} min={1} max={1_000_000} onSave={(v) => save({ maxBackupMb: v })} />
+                  <NumberField label="Skip files over" unit="MB" value={settings.skipOverMb} min={0} max={1_000_000} onSave={(v) => save({ skipOverMb: v })} />
+                </div>
+              </div>
 
-                  <label className="set-folder">
-                    <span className="set-row-label">Backup folder on the server</span>
-                    <input
-                      value={root}
-                      spellCheck={false}
-                      onChange={(e) => setRoot(e.target.value)}
-                      onBlur={() => root.trim() !== settings.backupRoot && save({ backupRoot: root.trim() || "~/.someprix/backups" })}
-                      onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-                    />
-                    <span className="set-row-hint">~ is your login's home folder. Keep it outside your website, so visitors can't reach it.</span>
-                  </label>
-                </>
-              )}
+              <label className="set-folder">
+                <span className="set-row-label">Backup folder on the server</span>
+                <input
+                  value={root}
+                  spellCheck={false}
+                  onChange={(e) => setRoot(e.target.value)}
+                  onBlur={() => root.trim() !== settings.backupRoot && save({ backupRoot: root.trim() || "~/.someprix/backups" })}
+                  onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+                />
+                <span className="set-row-hint">~ is your login's home folder. Keep it outside your website, so visitors can't reach it.</span>
+              </label>
             </>
           )}
-        </Card>
-
-        <Card icon={Zap} tone="amber" title="Transfers" about="Fast mode sends many files as one compressed archive. It needs tar on the server.">
+        </>
+      ),
+    },
+    {
+      id: "transfers",
+      title: "Transfers",
+      about: "Fast mode sends many files as one compressed archive. It needs tar on the server.",
+      icon: Zap,
+      tone: "amber",
+      body: (
+        <>
           <Switch on={local.fastPush} onChange={(value) => setLocalSwitch("fastPush", value)} label="Fast mode for pushes" />
           <Switch on={local.fastSftp} onChange={(value) => setLocalSwitch("fastSftp", value)} label="Fast mode for SFTP uploads and downloads" />
-        </Card>
-
-        <Card icon={FolderSync} tone="teal" title="SFTP" about="Moving files between this computer and a server.">
-          <Switch
-            on={local.sftpFollows}
-            onChange={(value) => setLocalSwitch("sftpFollows", value)}
-            label="Follow Sync"
-            hint="Switching project or server in Sync switches SFTP too: the same project on the left, the same server on the right, at the project's folder there."
-          />
-        </Card>
-
-        <Card icon={GithubMark} tone="ink" title="GitHub" about="Push projects to GitHub too, or instead of a server. .gitignore decides what goes there.">
-          {github === null ? (
-            <Loading label="Checking GitHub" />
-          ) : github.account ? (
-            <Row label={`Signed in as ${github.account.login}`} hint={github.account.name ?? undefined}>
-              <button type="button" className="btn" onClick={() => void signOut()}>
-                Sign out
-              </button>
-            </Row>
-          ) : (
-            <GitHubSignIn
-              deviceFlow={github.deviceFlow}
-              onSignedIn={(account) => setGithub((g) => ({ deviceFlow: g?.deviceFlow ?? false, account }))}
-            />
-          )}
-        </Card>
-
-        <Card icon={SquareTerminal} tone="rose" title="SSH Terminal" about="The shell on your server.">
-          <Switch
-            on={local.motd}
-            onChange={(value) => setLocalSwitch("motd", value)}
-            label="Show the server's welcome message"
-            hint="What the server says at login: system load, disk and memory use, updates waiting, notices from your host."
-          />
-        </Card>
-
-        <Card icon={FileCode} tone="blue" title="Editor" about="Files you open from your computer or the server.">
-          <Switch
-            on={local.drafts}
-            onChange={(value) => setLocalSwitch("drafts", value)}
-            label="Keep drafts of unsaved files"
-            hint="Text you haven't saved comes back after a crash or a power cut."
-          />
-        </Card>
-
-        <Card icon={Download} tone="sky" title="Updates" about={`You have Someprix ${version}.`}>
+        </>
+      ),
+    },
+    {
+      id: "sftp",
+      title: "SFTP",
+      about: "Moving files between this computer and a server.",
+      icon: FolderSync,
+      tone: "teal",
+      body: (
+        <Switch
+          on={local.sftpFollows}
+          onChange={(value) => setLocalSwitch("sftpFollows", value)}
+          label="Follow Sync"
+          hint="Switching project or server in Sync switches SFTP too: the same project on the left, the same server on the right, at the project's folder there."
+        />
+      ),
+    },
+    {
+      id: "github",
+      title: "GitHub",
+      about: "Push projects to GitHub too, or instead of a server. .gitignore decides what goes there.",
+      icon: GithubMark,
+      tone: "ink",
+      body:
+        github === null ? (
+          <Loading label="Checking GitHub" />
+        ) : github.account ? (
+          <Row label={`Signed in as ${github.account.login}`} hint={github.account.name ?? undefined}>
+            <button type="button" className="btn" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </Row>
+        ) : (
+          <GitHubSignIn deviceFlow={github.deviceFlow} onSignedIn={(account) => setGithub((g) => ({ deviceFlow: g?.deviceFlow ?? false, account }))} />
+        ),
+    },
+    {
+      id: "terminal",
+      title: "SSH Terminal",
+      about: "The shell on your server.",
+      icon: SquareTerminal,
+      tone: "rose",
+      body: (
+        <Switch
+          on={local.motd}
+          onChange={(value) => setLocalSwitch("motd", value)}
+          label="Show the server's welcome message"
+          hint="What the server says at login: system load, disk and memory use, updates waiting, notices from your host."
+        />
+      ),
+    },
+    {
+      id: "editor",
+      title: "Editor",
+      about: "Files you open from your computer or the server.",
+      icon: FileCode,
+      tone: "blue",
+      body: (
+        <Switch
+          on={local.drafts}
+          onChange={(value) => setLocalSwitch("drafts", value)}
+          label="Keep drafts of unsaved files"
+          hint="Text you haven't saved comes back after a crash or a power cut."
+        />
+      ),
+    },
+    {
+      id: "updates",
+      title: "Updates",
+      about: `You have Someprix ${version}.`,
+      icon: Download,
+      tone: "sky",
+      body: (
+        <>
           <Switch
             on={local.updates}
             onChange={(value) => setLocalSwitch("updates", value)}
@@ -397,7 +409,66 @@ export function SettingsPage({ theme, onThemeChange }: { theme: ThemePref; onThe
               </button>
             )}
           </Row>
-        </Card>
+        </>
+      ),
+    },
+  ];
+  const current = sections.find((s) => s.id === section) ?? sections[0];
+  const CurrentIcon = current.icon;
+
+  /** Up and Down move along the sections (opening each), as in a list. */
+  const onNavKey = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const at = sections.findIndex((s) => s.id === current.id);
+    const next =
+      event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : (at + (event.key === "ArrowDown" ? 1 : -1) + sections.length) % sections.length;
+    openSection(sections[next].id);
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(".settings-nav-item")[next]?.focus();
+  };
+
+  return (
+    <div className="page settings-page settings-split">
+      <nav className="settings-nav" aria-label="Settings" onKeyDown={onNavKey}>
+        <h1 className="settings-nav-title">Settings</h1>
+        {sections.map((s) => {
+          const Icon = s.icon;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              className="settings-nav-item"
+              aria-current={s.id === current.id ? "page" : undefined}
+              tabIndex={s.id === current.id ? 0 : -1}
+              data-tip={s.title}
+              data-tip-on="hover"
+              onClick={() => openSection(s.id)}
+            >
+              <span className="set-icon" data-tone={s.tone} aria-hidden="true">
+                <Icon size={15} strokeWidth={2} />
+              </span>
+              <span className="settings-nav-label">{s.title}</span>
+            </button>
+          );
+        })}
+        <p className="settings-nav-note">Changes take effect as you make them.</p>
+      </nav>
+
+      <div className="settings-main">
+        <div className="settings-inner" key={current.id}>
+          <header className="settings-section-head">
+            <span className="set-icon" data-tone={current.tone} aria-hidden="true">
+              <CurrentIcon size={20} strokeWidth={1.9} />
+            </span>
+            <span>
+              <h2>{current.title}</h2>
+              <p>{current.about}</p>
+            </span>
+          </header>
+          <section className="set-card" aria-label={current.title}>
+            <div className="set-card-body">{current.body}</div>
+          </section>
+        </div>
       </div>
     </div>
   );
