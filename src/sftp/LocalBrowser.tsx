@@ -171,6 +171,9 @@ export function LocalBrowser({
 
   // Sent somewhere from outside (goTo): the last request handled.
   const wentTo = useRef(0);
+  // The folder whose listing is showing; and, once it's gone, the climb to a parent that's there.
+  const listedPath = useRef<string | null>(null);
+  const climbing = useRef(false);
 
   // Start where the user left off, else in their home folder.
   useEffect(() => {
@@ -197,8 +200,25 @@ export function LocalBrowser({
     setListing(true);
     api
       .localList(path)
-      .then((list) => current && setEntries(list))
-      .catch((e) => current && setError(errorMessage(e)))
+      .then((list) => {
+        if (!current) return;
+        listedPath.current = path;
+        climbing.current = false;
+        setEntries(list);
+      })
+      .catch((e) => {
+        if (!current) return;
+        // The folder that was showing (or the one from last time) is gone: up to the nearest
+        // folder above it that's still there.
+        const parent = parentLocal(path);
+        if ((listedPath.current === null || listedPath.current === path || climbing.current) && parent !== null) {
+          climbing.current = true;
+          setPath(parent);
+          return;
+        }
+        climbing.current = false;
+        setError(errorMessage(e));
+      })
       .finally(() => current && setListing(false));
     return () => {
       current = false;

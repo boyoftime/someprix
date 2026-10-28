@@ -166,6 +166,10 @@ export function ServerPane({
   cwdRef.current = cwd;
   // A requested folder being opened, and where to go instead if it can't be.
   const going = useRef<{ path: string; fallback?: string } | null>(null);
+  // The folder whose listing is showing ("host:path"); and, once it's gone, the climb to a
+  // parent that's there.
+  const listedCwd = useRef<string | null>(null);
+  const climbing = useRef(false);
 
   useEffect(() => {
     const id = host?.id ?? null;
@@ -223,6 +227,8 @@ export function ServerPane({
         if (!current) return;
         reopening.current = null;
         going.current = null;
+        listedCwd.current = `${host.id}:${cwd}`;
+        climbing.current = false;
         previousPaths.current = new Set((entriesRef.current ?? []).map((e) => e.path));
         setEntries(list);
       })
@@ -249,6 +255,14 @@ export function ServerPane({
           setCwd(fallback);
           return;
         }
+        // The folder that was showing is gone (a push deleted it, say): up to the nearest
+        // folder above it that's still there.
+        if ((listedCwd.current === `${host.id}:${cwd}` || climbing.current) && cwd !== "/") {
+          climbing.current = true;
+          setCwd(parentRemote(cwd));
+          return;
+        }
+        climbing.current = false;
         setError(errorMessage(e));
       })
       .finally(() => current && setListing(false));

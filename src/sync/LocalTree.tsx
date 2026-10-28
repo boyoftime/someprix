@@ -108,24 +108,49 @@ export function LocalTree({
   );
   const { selected, only, clear, all, click, beginBox, box } = useListSelection(body, ROW, order);
 
+  // Open folders that couldn't be read: deleted here, most likely (see the pruning below).
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+
+  // Each folder on its own: one that's been deleted mustn't hide the rest of the tree. Only the
+  // project folder itself failing is an error (the project list above still works then).
   const load = useCallback(async (dirs: string[]) => {
-    try {
-      const results = await Promise.all(dirs.map(async (dir) => [dir, await api.listLocal(dir)] as const));
-      setListings((current) => {
-        const next = new Map(current);
-        for (const [dir, entries] of results) next.set(dir, entries);
-        return next;
-      });
-      setError(null);
-    } catch (e) {
-      setError(errorMessage(e));
+    const read = await Promise.all(
+      dirs.map((dir) =>
+        api.listLocal(dir).then(
+          (entries) => ({ dir, entries, failure: null as unknown }),
+          (failure: unknown) => ({ dir, entries: null, failure }),
+        ),
+      ),
+    );
+    const top = read.find((r) => r.dir === "" && r.entries === null);
+    if (top) {
+      setError(errorMessage(top.failure));
+      return;
     }
+    setListings((current) => {
+      const next = new Map(current);
+      for (const { dir, entries } of read) {
+        if (entries) next.set(dir, entries);
+        else next.delete(dir);
+      }
+      return next;
+    });
+    setGone((current) => {
+      const next = new Set(current);
+      for (const { dir, entries } of read) {
+        if (entries) next.delete(dir);
+        else next.add(dir);
+      }
+      return next;
+    });
+    setError(null);
   }, []);
 
   // A different project folder starts collapsed, with nothing selected.
   useEffect(() => {
     setExpanded(new Set());
     setListings(new Map());
+    setGone(new Set());
     clear();
     void load([""]);
   }, [root, load, clear]);
@@ -152,6 +177,17 @@ export function LocalTree({
   }, [changes]);
 
   const deletedPaths = useMemo(() => changes.filter((c) => c.kind === "deleted").map((c) => c.path), [changes]);
+
+  // An open folder that's gone, with nothing left inside it to push (a push just sent its
+  // deletions, say), closes: the tree is back at its parent, as that is now. One still holding
+  // deletions stays open, showing them.
+  useEffect(() => {
+    const stale = [...expanded].filter((dir) => gone.has(dir) && !deletedPaths.some((path) => path.startsWith(`${dir}/`)));
+    if (!stale.length) return;
+    const without = (set: ReadonlySet<string>) => new Set([...set].filter((dir) => !stale.includes(dir)));
+    setExpanded(without);
+    setGone(without);
+  }, [expanded, gone, deletedPaths]);
 
   /** The folder's entries plus deleted files (and folders) that only exist in the change list. */
   const rowsFor = (dir: string): Row[] => {
