@@ -577,6 +577,8 @@ struct PushProgress {
 pub struct PushReport {
     uploaded: usize,
     deleted: usize,
+    /// Folders removed with them: deleted here, and left empty on the server.
+    deleted_dirs: usize,
     /// The files went as one compressed archive (fast mode).
     fast: bool,
     /// Stopped by Cancel before anything changed on the server.
@@ -758,6 +760,13 @@ async fn push(
     } else {
         push_files(&pushing, &uploads, &deletions, report).await
     };
+    // A folder deleted here goes from the server too, once its deletions have left it empty.
+    if result.is_ok() && !report.cancelled && report.deleted > 0 {
+        let deleted: Vec<&str> = deletions.iter().map(|c| c.path.as_str()).collect();
+        let removed = remove_emptied_dirs(conn, &root, &remote_dir, &deleted).await;
+        report.deleted_dirs = removed.len();
+        entry.lock().unwrap().removed_dirs = removed;
+    }
     emit(total, None, bytes_total, None);
 
     // Whatever changed on the server goes into the history (even a push that failed partway), so
@@ -780,6 +789,35 @@ async fn push(
         backup::save(&path, &entries);
     }
     result
+}
+
+/// After a push's deletions: the folders they were in that no longer exist here go from the server
+/// too, deepest first. Only empty ones (removing a folder fails otherwise): one still holding files
+/// the project doesn't know (uploads, logs, excluded files) stays, and so do they. Returns the
+/// folders removed (absolute).
+async fn remove_emptied_dirs(conn: &ssh::Connection, root: &Path, remote_dir: &str, deleted: &[&str]) -> Vec<String> {
+    let mut dirs: Vec<&str> = Vec::new();
+    for path in deleted {
+        let mut rest = *path;
+        // Up from the file, while the folder is gone here (above one that's here, all are).
+        while let Some((dir, _)) = rest.rsplit_once('/') {
+            if root.join(dir).exists() {
+                break;
+            }
+            dirs.push(dir);
+            rest = dir;
+        }
+    }
+    dirs.sort_unstable_by(|a, b| b.matches('/').count().cmp(&a.matches('/').count()).then(a.cmp(b)));
+    dirs.dedup();
+    let mut removed = Vec::new();
+    for dir in dirs {
+        let full = ssh::join(remote_dir, dir);
+        if conn.remove_dir(&full).await.is_ok() {
+            removed.push(full);
+        }
+    }
+    removed
 }
 
 /// Normal mode: each file goes up under a temporary name beside its place, so a cancel or a

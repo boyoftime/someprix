@@ -69,6 +69,10 @@ pub struct Entry {
     /// Folders the change created (absolute), removed again by undo when they're empty.
     #[serde(default)]
     pub created_dirs: Vec<String>,
+    /// Folders the change removed (absolute): deleted locally, and emptied on the server by its
+    /// deletions. Undo makes them again.
+    #[serde(default)]
+    pub removed_dirs: Vec<String>,
 }
 
 impl Entry {
@@ -81,6 +85,7 @@ impl Entry {
             backup_dir,
             files: Vec::new(),
             created_dirs: Vec::new(),
+            removed_dirs: Vec::new(),
         }
     }
 
@@ -373,6 +378,14 @@ pub async fn undo(lanes: &[Arc<Connection>], shell: bool, entry: &Entry) -> Resu
     let target = |rel: &str| ssh::join(&entry.remote_dir, rel);
     let mut undone = Undone::default();
     let done = Mutex::new(Vec::new());
+
+    // Folders the change removed come back first (shallowest first), even ones nothing goes back into.
+    let mut removed_dirs = entry.removed_dirs.clone();
+    removed_dirs.sort_by_key(|d| d.len());
+    let mut made_again = HashSet::new();
+    for dir in &removed_dirs {
+        make_dirs(conn, dir, &mut made_again).await?;
+    }
 
     let restores: Vec<&EntryFile> = entry.files.iter().filter(|f| f.action != Action::Added && f.backed_up).collect();
     undone.missed = entry.files.iter().filter(|f| f.action != Action::Added && !f.backed_up).count();

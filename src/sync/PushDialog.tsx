@@ -180,10 +180,11 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
       setPhase("done");
       // Let the full bar register before the dialog goes away.
       await new Promise((r) => setTimeout(r, DONE_PAUSE));
-      // Only deletions: say that, not "Pushed 0 files".
+      // Only deletions: say that, not "Pushed 0 files". Folders removed with them count too.
+      const folders = report.deletedDirs ? ` and ${plural(report.deletedDirs, "folder")}` : "";
       const said = !report.uploaded && report.deleted
-        ? `Deleted ${plural(report.deleted, "file")} from ${remoteDir}`
-        : `Pushed ${plural(report.uploaded, "file")}${report.deleted ? `, deleted ${report.deleted}` : ""} to ${remoteDir}`;
+        ? `Deleted ${plural(report.deleted, "file")}${folders} from ${remoteDir}`
+        : `Pushed ${plural(report.uploaded, "file")}${report.deleted ? `, deleted ${report.deleted}${folders}` : ""} to ${remoteDir}`;
       const history = report.history;
       notify(said, "info", history ? { label: "Undo", run: () => onUndo(history) } : undefined);
       if (report.notBackedUp) {

@@ -128,6 +128,8 @@ export type ItemProps = {
 export type PushReport = {
   uploaded: number;
   deleted: number;
+  /** Folders removed with them: deleted here, and left empty on the server. */
+  deletedDirs?: number;
   fast?: boolean;
   /** Stopped by Cancel before anything changed on the server. */
   cancelled?: boolean;
