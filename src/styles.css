@@ -866,6 +866,26 @@ input::-ms-clear {
   gap: 14px;
 }
 
+/* A block easing to its content's height (SmoothHeight.tsx). It clips what's on its way in or
+   out, but not focus rings just past its edges. */
+.smooth-height {
+  overflow: clip;
+  overflow-clip-margin: 6px;
+  transition: height 260ms var(--ease-out);
+}
+
+/* Fields that change with a choice (password or key) fade in as they arrive. */
+.auth-fields {
+  animation: auth-in 240ms var(--ease-out);
+}
+
+@keyframes auth-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 .field {
   display: flex;
   flex-direction: column;

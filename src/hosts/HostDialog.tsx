@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Dialog } from "../ui/Dialog";
 import { PasswordInput } from "../ui/PasswordInput";
+import { SmoothHeight } from "../ui/SmoothHeight";
 import { errorMessage, useAppData } from "../state/AppData";
 import type { AuthMethod, Host } from "../lib/api";
 import { isMac, isWindows, passwordStore } from "../lib/platform";
@@ -149,43 +150,48 @@ export function HostDialog({ host, onClose, onSaved }: HostDialogProps) {
           </div>
         </div>
 
-        {auth === "password" ? (
-          <label className="field">
-            <span>Password</span>
-            <PasswordInput
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder={editing ? "Unchanged" : ""}
-              required={!editing}
-            />
-          </label>
-        ) : (
-          <>
-            <div className="field">
-              <span>Key file</span>
-              <div className="file-pick">
-                <input
-                  value={keyPath}
-                  onChange={(e) => setKeyPath(e.target.value)}
-                  placeholder={keyExample}
-                  spellCheck={false}
-                  required
+        {/* Password or key: the fields change, and the dialog eases to their height. */}
+        <SmoothHeight>
+          <div key={auth} className="form auth-fields">
+            {auth === "password" ? (
+              <label className="field">
+                <span>Password</span>
+                <PasswordInput
+                  value={secret}
+                  onChange={(e) => setSecret(e.target.value)}
+                  placeholder={editing ? "Unchanged" : ""}
+                  required={!editing}
                 />
-                <button type="button" className="btn" onClick={chooseKey}>
-                  Browse
-                </button>
-              </div>
-            </div>
-            <label className="field">
-              <span>Passphrase</span>
-              <PasswordInput
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-                placeholder={editing ? "Unchanged" : "Optional"}
-              />
-            </label>
-          </>
-        )}
+              </label>
+            ) : (
+              <>
+                <div className="field">
+                  <span>Key file</span>
+                  <div className="file-pick">
+                    <input
+                      value={keyPath}
+                      onChange={(e) => setKeyPath(e.target.value)}
+                      placeholder={keyExample}
+                      spellCheck={false}
+                      required
+                    />
+                    <button type="button" className="btn" onClick={chooseKey}>
+                      Browse
+                    </button>
+                  </div>
+                </div>
+                <label className="field">
+                  <span>Passphrase</span>
+                  <PasswordInput
+                    value={secret}
+                    onChange={(e) => setSecret(e.target.value)}
+                    placeholder={editing ? "Unchanged" : "Optional"}
+                  />
+                </label>
+              </>
+            )}
+          </div>
+        </SmoothHeight>
 
         <p className="hint">Passwords and passphrases are kept in {passwordStore}.</p>
         {error && (
