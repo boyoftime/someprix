@@ -1095,7 +1095,14 @@ input::-ms-clear {
   box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.45);
   font-size: 13.5px;
   pointer-events: auto;
+  cursor: default;
   animation: toast-in 180ms var(--ease-out);
+}
+
+/* Going: it fades and drops a little, and can't be clicked meanwhile. */
+.toast[data-leaving] {
+  pointer-events: none;
+  animation: toast-out 200ms ease-in forwards;
 }
 
 .toast svg {
@@ -3772,6 +3779,13 @@ label.gh-choice-title {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
   }
 }
 

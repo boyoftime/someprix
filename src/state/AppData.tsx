@@ -21,7 +21,12 @@ export type TrustRequest = {
 
 /** A button on a toast, e.g. Undo right after a push. */
 export type ToastAction = { label: string; run: () => void };
-export type Toast = { id: number; text: string; tone: "info" | "error"; action?: ToastAction };
+/** `duration`: how long it stays up (ms), not counting while it's hovered. `leaving`: on its way
+ *  out (it fades, then goes). */
+export type Toast = { id: number; text: string; tone: "info" | "error"; action?: ToastAction; duration: number; leaving?: boolean };
+
+/** How long a toast takes to fade out (matching .toast[data-leaving]). */
+const TOAST_LEAVE_MS = 200;
 
 /** The latest push: when it finished and which server paths it wrote. */
 export type PushRecord = { at: number; paths: string[] };
@@ -116,15 +121,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       // Stays as it was.
     }
   }, []);
-  const dismiss = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), []);
+  // Fades it out, then takes it away.
+  const dismiss = useCallback((id: number) => {
+    setToasts((list) => list.map((t) => (t.id === id && !t.leaving ? { ...t, leaving: true } : t)));
+    setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), TOAST_LEAVE_MS);
+  }, []);
   const notify = useCallback(
     (text: string, tone: Toast["tone"] = "info", action?: ToastAction) => {
       const id = ++toastId.current;
-      setToasts((list) => [...list, { id, text, tone, action }]);
-      // One with a button stays long enough to reach for it.
-      setTimeout(() => dismiss(id), action ? 10000 : tone === "error" ? 7000 : 4000);
+      // One with a button stays long enough to reach for it. (Toasts.tsx keeps the time.)
+      const duration = action ? 10000 : tone === "error" ? 7000 : 4000;
+      setToasts((list) => [...list, { id, text, tone, action, duration }]);
     },
-    [dismiss],
+    [],
   );
 
   useEffect(() => {
