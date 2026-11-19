@@ -4,16 +4,18 @@
 //! Every push records each file's size and modified time on the server (see
 //! `Project::record_server`). The check compares the server's copy with that record; when there
 //! is no record, or it differs, small files are fetched and compared by content with what was
-//! last pushed, so a file that was only touched (or got the same edit) doesn't count.
+//! last pushed, so a file that was only touched (or got the same edit) doesn't count. Big ones
+//! aren't fetched: the server fingerprints them itself (SHA-256), and one that already has
+//! exactly what's here counts as pushed.
 
-use std::path::Path;
+use std::{io::Read, path::Path, time::Duration};
 
 use futures::{stream, StreamExt, TryStreamExt};
 use russh_sftp::{client::error::Error as SftpError, protocol::StatusCode};
 use serde::Serialize;
 
 use crate::{
-    project::{Change, ChangeKind, ServerSig, SharedProject},
+    project::{self, Change, ChangeKind, ServerSig, SharedProject},
     ssh::{self, Connection},
 };
 
@@ -105,8 +107,91 @@ pub async fn find(
             project.save_server();
         }
     }
+    // Big files the server already has exactly: no conflict, and nothing to send. They count as
+    // pushed now, so the push leaves them be.
+    let same = same_on_server(conn, root, remote_dir, &conflicts).await;
+    if !same.is_empty() {
+        conflicts.retain(|c| !same.iter().any(|(path, ..)| *path == c.path));
+        if let Some(project) = project.lock().unwrap().as_mut() {
+            for (path, sig, server) in &same {
+                project.mark_pushed(path, Some(*sig));
+                project.record_server(target, path, Some(*server));
+            }
+            project.save_baseline();
+            project.save_server();
+        }
+    }
     conflicts.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(conflicts)
+}
+
+/// Among conflicts too big to have been fetched and compared, the ones whose server copy is
+/// exactly the local file: the server fingerprints them (one command for all), and so does this
+/// computer. None when the server won't run commands (an SFTP-only login): they stay conflicts.
+async fn same_on_server(conn: &Connection, root: &Path, remote_dir: &str, conflicts: &[Conflict]) -> Vec<(String, project::Sig, ServerSig)> {
+    let mut candidates = Vec::new();
+    for conflict in conflicts {
+        if conflict.kind == ChangeKind::Deleted || conflict.server_size <= COMPARE_LIMIT {
+            continue;
+        }
+        // Different sizes can't be the same file.
+        let size = tokio::fs::metadata(root.join(&conflict.path)).await.map(|m| m.len());
+        if size.is_ok_and(|size| size == conflict.server_size) {
+            candidates.push(conflict);
+        }
+    }
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+    // One line per file, in order: its SHA-256, or nothing when it couldn't be read.
+    let mut script = String::from("for f in");
+    for conflict in &candidates {
+        script.push(' ');
+        script.push_str(&ssh::sh_quote(&ssh::join(remote_dir, &conflict.path)));
+    }
+    script.push_str(r#"; do h=$(sha256sum -- "$f" 2>/dev/null || shasum -a 256 -- "$f" 2>/dev/null); echo "${h%% *}"; done"#);
+    let Ok((0, output)) = conn.exec(&script, Duration::from_secs(300)).await else {
+        return Vec::new();
+    };
+    let lines: Vec<&str> = output.lines().collect();
+    if lines.len() != candidates.len() {
+        return Vec::new();
+    }
+    let mut same = Vec::new();
+    for (conflict, line) in candidates.into_iter().zip(lines) {
+        // (A name with odd characters gets a backslash in front of its line.)
+        let server = line.trim().trim_start_matches('\\').to_ascii_lowercase();
+        if server.len() != 64 {
+            continue;
+        }
+        let path = root.join(&conflict.path);
+        let here = tauri::async_runtime::spawn_blocking(move || -> std::io::Result<(String, project::Sig)> {
+            Ok((sha256_file(&path)?, project::signature(&path)?))
+        })
+        .await;
+        if let Ok(Ok((hash, sig))) = here {
+            if hash == server {
+                same.push((conflict.path.clone(), sig, ServerSig { size: conflict.server_size, mtime: conflict.server_modified }));
+            }
+        }
+    }
+    same
+}
+
+/// A file's SHA-256, in lowercase hex (as sha256sum prints it).
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0; 1024 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 async fn check(
