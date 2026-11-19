@@ -355,7 +355,10 @@ export const api = {
   conflicts: (includeDeletions: boolean, only?: string[]) =>
     call<Conflict[]>("project_conflicts", { includeDeletions, only: only ?? null }),
   /** Replaces project files with the server copies; the local ones go to the Recycle Bin (Trash). */
-  takeServer: (paths: string[]) => call<number>("project_take_server", { paths }),
+  /** Replaces these files with the server's copies (progress: onTakeProgress). */
+  takeServer: (paths: string[]) => call<{ taken: number; cancelled: boolean }>("project_take_server", { paths }),
+  /** Stops takeServer; the files already replaced stay. */
+  cancelTake: () => call<void>("project_take_cancel"),
 
   localHome: () => call<string>("local_home"),
   /** Lists a folder on this computer; an empty path lists the drives (Windows) or "/". */
@@ -411,6 +414,8 @@ export const api = {
     listen<GithubProgress>("github://progress", (event) => handler(event.payload)),
   onPushProgress: (handler: (progress: PushProgress) => void): Promise<UnlistenFn> =>
     listen<PushProgress>("project://push-progress", (event) => handler(event.payload)),
+  onTakeProgress: (handler: (progress: PushProgress) => void): Promise<UnlistenFn> =>
+    listen<PushProgress>("project://take-progress", (event) => handler(event.payload)),
 };
 
 /** A project-relative path ("src/app.js") as a full path under the project folder on this computer. */

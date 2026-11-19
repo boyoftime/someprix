@@ -68,12 +68,14 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
     setKept((now) => (now.includes(path) ? now.filter((p) => p !== path) : [...now, path]));
   const [phase, setPhase] = useState<Phase>("ready");
   const [progress, setProgress] = useState<PushProgress | null>(null);
-  const transfer = useTransferSpeed(phase === "pushing", settling(progress));
+  const transfer = useTransferSpeed(phase === "pushing" || phase === "taking", settling(progress));
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const [comparing, setComparing] = useState<Conflict | null>(null);
   /** Conflicting files left out of this push (skipped, or replaced by the server's version). */
   const [held, setHeld] = useState<string[]>([]);
+  /** Files already replaced by the server's version (they're no longer changes). */
+  const [gotten, setGotten] = useState<string[]>([]);
   const [cancelling, setCancelling] = useState(false);
 
   const onProgress = (next: PushProgress) => {
@@ -89,7 +91,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const order = uploads
     .concat(deletions)
     .map((c) => c.path)
-    .filter((path) => !held.includes(path) && !kept.includes(path));
+    .filter((path) => !held.includes(path) && !kept.includes(path) && !gotten.includes(path));
   const count = order.length;
   const isDeletion = (path: string) => deletions.some((c) => c.path === path);
   const deleting = order.filter(isDeletion).length;
@@ -148,15 +150,33 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
     setHeld(hold);
     if (take.length) {
       setPhase("taking");
+      setProgress(null);
+      setCancelling(false);
+      transfer.reset();
+      const unlisten = await api.onTakeProgress(onProgress);
       try {
-        const got = await api.takeServer(take);
-        notify(`Got the server version of ${plural(got, "file")}`);
+        const { taken, cancelled } = await api.takeServer(take);
+        // They go in order: the first ones are done.
+        const got = take.slice(0, taken);
+        setGotten((now) => [...now, ...got]);
+        if (cancelled) {
+          // Back to deciding, without the ones already replaced.
+          notify(taken ? `Stopped. Got the server version of ${plural(taken, "file")}` : "Stopped. Nothing was changed here.");
+          setConflicts((now) => now.filter((c) => !got.includes(c.path)));
+          setHeld([]);
+          setCancelling(false);
+          setPhase("conflicts");
+          return;
+        }
+        notify(`Got the server version of ${plural(taken, "file")}`);
       } catch (e) {
         // Whatever was replaced is no longer a change; checking again sorts out the rest.
         setError(errorMessage(e));
         setHeld([]);
         setPhase("ready");
         return;
+      } finally {
+        unlisten();
       }
     }
     if (rest.length === 0) return finish();
@@ -209,17 +229,22 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const deciding = phase === "conflicts" || phase === "taking";
   const busy = phase !== "ready" && phase !== "conflicts";
   const done = phase === "done";
+  const takingNow = phase === "taking";
+  // Getting server versions counts its own files; a push counts the list.
+  const filesTotal = takingNow ? (progress?.total ?? 0) : order.length;
   const filesDone = done ? order.length : (progress?.done ?? 0);
   const bytesTotal = progress?.bytesTotal ?? 0;
   const bytesDone = done ? bytesTotal : (progress?.bytesDone ?? 0);
   // Bytes give a smooth bar; with nothing to upload (only deletions) count files instead.
-  const fraction = done ? 1 : bytesTotal > 0 ? bytesDone / bytesTotal : order.length ? filesDone / order.length : 0;
+  const fraction = done ? 1 : bytesTotal > 0 ? bytesDone / bytesTotal : filesTotal ? filesDone / filesTotal : 0;
   // Never claim 100% before the server has confirmed the last file.
   const percent = done ? 100 : Math.min(99, Math.floor(fraction * 100));
   const currentPath = progress?.path ?? null;
   const stage = progress?.stage ?? null;
   const currentIsDeletion = currentPath !== null && isDeletion(currentPath);
   const pushing = phase === "pushing" || done;
+  // Something is going across, with a bar to show it.
+  const moving = pushing || takingNow;
 
   // Until files start going into place, Cancel takes the push back.
   const cancellable = phase === "pushing" && stage !== "placing" && !cancelling;
@@ -228,16 +253,16 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
   const speed = currentIsDeletion || stage ? null : transfer.speed;
   const timeLeft = speed && speed > 0 ? (bytesTotal - bytesDone) / speed : null;
   // The bar fills smoothly at the current speed between confirmations (see useSmoothFill).
-  const smooth = useSmoothFill(fraction, speed && bytesTotal ? speed / bytesTotal : 0, pushing, done);
+  const smooth = useSmoothFill(fraction, speed && bytesTotal ? speed / bytesTotal : 0, moving, done);
 
   // The sidebar shows a running push while another page is open.
   useEffect(() => {
     if (phase === "checking") setActivity("sync", { label: "Checking the server before pushing", percent: null });
-    else if (phase === "taking") setActivity("sync", { label: "Getting server versions", percent: null });
+    else if (phase === "taking") setActivity("sync", { label: "Getting server versions", percent: progress ? percent : null });
     else if (phase === "pushing")
       setActivity("sync", { label: cancelling ? "Cancelling a push" : `Pushing ${plural(order.length, "file")}`, percent: percent });
     else setActivity("sync", null);
-  }, [phase, percent, cancelling, order.length]);
+  }, [phase, percent, cancelling, order.length, progress === null]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => setActivity("sync", null), []);
 
   // The conflicts step: every file needs a choice before going on.
@@ -298,7 +323,19 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
         footer={
           <>
             <span className="spacer" />
-            {phase === "pushing" ? (
+            {phase === "taking" ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setCancelling(true);
+                  void api.cancelTake();
+                }}
+                disabled={cancelling}
+              >
+                {cancelling ? "Stopping…" : "Cancel"}
+              </button>
+            ) : phase === "pushing" ? (
               <button
                 type="button"
                 className="btn btn-ghost"
@@ -473,7 +510,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
           </p>
         )}
 
-        {pushing && (
+        {moving && (
           <div className="push-progress" data-phase={phase}>
             <div className="push-progress-head">
               <span className="push-percent">
@@ -483,6 +520,12 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
               <span className="push-status">
                 {done
                   ? "Done"
+                  : takingNow
+                    ? cancelling
+                      ? "Stopping…"
+                      : currentPath
+                        ? `Downloading ${currentPath}`
+                        : "Connecting…"
                   : stage === "packing"
                     ? `Packing ${currentPath ?? "…"}`
                     : stage === "unpacking"
@@ -502,7 +545,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
             <div
               className="push-track"
               role="progressbar"
-              aria-label="Push progress"
+              aria-label={takingNow ? "Download progress" : "Push progress"}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={percent}
@@ -511,7 +554,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
             </div>
             <div className="push-meta">
               <span>
-                {Math.min(filesDone + (done ? 0 : 1), order.length)} of {plural(order.length, "file")}
+                {Math.min(filesDone + (done ? 0 : 1), filesTotal)} of {plural(filesTotal, "file")}
               </span>
               <span className="push-meta-right">
                 {bytesTotal > 0 && (
@@ -520,7 +563,7 @@ export function PushDialog({ host, remoteDir, changes, only, fast = false, onClo
                   </span>
                 )}
                 {speed !== null && (
-                  <span className="push-speed" aria-label={`Upload speed ${formatSpeed(speed)}`}>
+                  <span className="push-speed" aria-label={`${takingNow ? "Download" : "Upload"} speed ${formatSpeed(speed)}`}>
                     <Gauge size={13} strokeWidth={2} />
                     {formatSpeed(speed)}
                   </span>

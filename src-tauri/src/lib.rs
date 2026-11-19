@@ -73,6 +73,7 @@ pub fn run() {
             commands::github_ignore,
             commands::project_push,
             commands::project_push_cancel,
+            commands::project_take_cancel,
             commands::project_history,
             commands::project_undo,
             commands::project_backups_clear,

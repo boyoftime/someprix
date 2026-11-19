@@ -24,6 +24,8 @@ use crate::{
 };
 
 const PUSH_EVENT: &str = "project://push-progress";
+/// Progress getting the server's versions of files (the push dialog's conflicts).
+const TAKE_EVENT: &str = "project://take-progress";
 
 pub struct AppState {
     store: Store,
@@ -32,6 +34,8 @@ pub struct AppState {
     pushing: AtomicBool,
     /// Set by the push dialog's Cancel; the push stops and removes what it sent.
     push_cancel: AtomicBool,
+    /// Set by Cancel while getting the server's versions of files.
+    take_cancel: AtomicBool,
     uploading: AtomicBool,
     /// Set by the Cancel button; the running upload stops and undoes itself.
     upload_cancel: AtomicBool,
@@ -49,6 +53,7 @@ impl AppState {
             project: SharedProject::default(),
             pushing: AtomicBool::new(false),
             push_cancel: AtomicBool::new(false),
+            take_cancel: AtomicBool::new(false),
             uploading: AtomicBool::new(false),
             upload_cancel: AtomicBool::new(false),
             props_generation: Arc::new(AtomicU64::new(0)),
@@ -1372,26 +1377,74 @@ pub async fn project_conflicts(
     conflicts::find(&conn, &state.project, Path::new(&info.root), &remote_dir, &target, changes).await
 }
 
+/// What getting the server's versions did: how many files it replaced, and whether Cancel stopped it.
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TakeReport {
+    taken: usize,
+    cancelled: bool,
+}
+
 /// Replaces project files with the server's copies, so they stop counting as changes. The local
-/// versions go to the Recycle Bin. Returns how many files were replaced.
+/// versions go to the Recycle Bin. Progress goes out as it downloads (big files over several
+/// connections at once); Cancel stops it, keeping the files already replaced.
 #[tauri::command]
-pub async fn project_take_server(app: AppHandle, state: State<'_, AppState>, paths: Vec<String>) -> Result<usize, String> {
+pub async fn project_take_server(app: AppHandle, state: State<'_, AppState>, paths: Vec<String>) -> Result<TakeReport, String> {
     let info = project_info(&state).ok_or("No project open")?;
     let host_id = info.host_id.ok_or("No server selected")?;
     let remote_dir = info.remote_dir.ok_or("No destination set")?;
-    let conn = state.ssh.get(&host_id).await?;
+    let lanes = state.ssh.lanes(&state.store, &host_id, turbo::LANES).await?;
     let root = PathBuf::from(&info.root);
     let target = conflicts::target_key(&host_id, &remote_dir);
+    state.take_cancel.store(false, Ordering::SeqCst);
 
-    let mut taken = 0;
-    let mut result = Ok(());
+    // Every file's size first, so the bar moves by bytes.
+    let mut sizes = Vec::with_capacity(paths.len());
     for rel in &paths {
-        result = take_server(&state, &conn, &root, &remote_dir, &target, rel).await;
-        if result.is_err() {
+        let sig = conflicts::server_sig(&lanes[0], &ssh::join(&remote_dir, rel)).await?;
+        sizes.push(sig.map_or(0, |s| s.size));
+    }
+    let bytes_total: u64 = sizes.iter().sum();
+    let total = paths.len();
+    let meter = turbo::Meter::default();
+    let cancelled = || state.take_cancel.load(Ordering::SeqCst);
+    let emit = |done: usize, path: Option<&str>, bytes_done: u64| {
+        let _ = app.emit(
+            TAKE_EVENT,
+            PushProgress {
+                done,
+                total,
+                path: path.map(str::to_string),
+                bytes_done: bytes_done.min(bytes_total),
+                bytes_total,
+                finishing: false,
+                stage: None,
+            },
+        );
+    };
+
+    let mut report = TakeReport::default();
+    let mut result = Ok(());
+    for (i, rel) in paths.iter().enumerate() {
+        if cancelled() {
+            report.cancelled = true;
             break;
         }
-        taken += 1;
+        emit(i, Some(rel), meter.bytes());
+        let step = take_server(&state, &lanes, &root, &remote_dir, &target, rel, sizes[i], &meter, &cancelled);
+        match turbo::with_ticker(step, || emit(i, Some(rel), meter.bytes())).await {
+            Ok(true) => report.taken += 1,
+            Ok(false) => {
+                report.cancelled = true;
+                break;
+            }
+            Err(error) => {
+                result = Err(error);
+                break;
+            }
+        }
     }
+    emit(report.taken, None, meter.bytes());
 
     let changes = {
         let guard = state.project.lock().unwrap();
@@ -1404,31 +1457,55 @@ pub async fn project_take_server(app: AppHandle, state: State<'_, AppState>, pat
     if let Some(changes) = changes {
         let _ = app.emit(CHANGES_EVENT, changes);
     }
-    result.map(|()| taken)
+    result.map(|()| report)
 }
 
+/// Stops getting the server's versions; the file on its way is dropped, the ones already
+/// replaced stay.
+#[tauri::command]
+pub fn project_take_cancel(state: State<'_, AppState>) {
+    state.take_cancel.store(true, Ordering::SeqCst);
+}
+
+/// Replaces one file with the server's copy. Ok(false) when cancelled (nothing changed here).
+#[allow(clippy::too_many_arguments)]
 async fn take_server(
     state: &AppState,
-    conn: &ssh::Connection,
+    lanes: &[Arc<ssh::Connection>],
     root: &Path,
     remote_dir: &str,
     target: &str,
     rel: &str,
-) -> Result<(), String> {
+    size: u64,
+    meter: &turbo::Meter,
+    cancelled: turbo::Cancelled<'_>,
+) -> Result<bool, String> {
     let remote = ssh::join(remote_dir, rel);
     let local = root.join(rel);
     let name = local.file_name().ok_or("Bad path")?.to_string_lossy().into_owned();
     // It arrives next to the old file first (the change tracker ignores it there), so a failed
-    // download leaves the local file as it was.
+    // or cancelled download leaves the local file as it was.
     let part = local.with_file_name(format!("{name}{PART_SUFFIX}"));
     if let Some(dir) = local.parent() {
         tokio::fs::create_dir_all(dir)
             .await
             .map_err(|e| format!("Create failed: {}: {e}", dir.display()))?;
     }
-    if let Err(error) = conn.download_file(&remote, &part, |_| true).await {
-        let _ = tokio::fs::remove_file(&part).await;
-        return Err(error);
+    let fetched = if turbo::split_download(size, lanes.len()) {
+        turbo::download_split(lanes, &remote, &part, size, meter, cancelled).await
+    } else {
+        turbo::download_one(&lanes[0], &remote, &part, meter, cancelled).await
+    };
+    match fetched {
+        Ok(true) => {}
+        Ok(false) => {
+            let _ = tokio::fs::remove_file(&part).await;
+            return Ok(false);
+        }
+        Err(error) => {
+            let _ = tokio::fs::remove_file(&part).await;
+            return Err(error);
+        }
     }
     if local.exists() {
         let old = local.clone();
@@ -1451,13 +1528,13 @@ async fn take_server(
             .map_err(|e| e.to_string())?
             .map_err(|e| format!("Read failed: {}: {e}", local.display()))?
     };
-    let server = conflicts::server_sig(conn, &remote).await.ok().flatten();
+    let server = conflicts::server_sig(&lanes[0], &remote).await.ok().flatten();
     let mut guard = state.project.lock().unwrap();
     if let Some(project) = guard.as_mut().filter(|p| p.root == root) {
         project.mark_pushed(rel, Some(sig));
         project.record_server(target, rel, server);
     }
-    Ok(())
+    Ok(true)
 }
 
 // ---------- SFTP page ----------
