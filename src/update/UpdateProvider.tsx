@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { version as currentVersion } from "../../package.json";
 import { errorMessage, useAppData } from "../state/AppData";
 import { useEditor } from "../editor/EditorProvider";
@@ -9,6 +10,7 @@ import { Loading } from "../ui/Loading";
 import { Lottie } from "../ui/Lottie";
 import checkAnimation from "../assets/lottie/check.json";
 import { inTauri } from "../window/windowFx";
+import { isWindows } from "../lib/platform";
 import { AUTO_UPDATES, isOn } from "../settings/SettingsPage";
 
 /** First look for a new version this long after launch, then this often while the app is open. */
@@ -135,8 +137,10 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
         }
       });
       setStep("installing");
-      // On Windows the app closes here; the installer finishes and opens it again.
+      // On Windows the app closes here; the installer finishes and opens it again. On Mac and
+      // Linux the new version is in place once this returns, so the app opens itself again.
       await update.install();
+      if (!isWindows) await relaunch();
     } catch (error) {
       setProblem(describe(error));
       setStep("failed");

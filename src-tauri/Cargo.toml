@@ -44,6 +44,7 @@ git2 = { version = "0.21", default-features = false, features = ["https"] }
 # GitHub's API (sign-in, repositories), over the TLS the updater already uses.
 reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
+tauri-plugin-process = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
