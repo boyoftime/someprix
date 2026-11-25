@@ -201,6 +201,9 @@ export function ServerPane({
     const first = startFirst && startDir ? startDir : last;
     reopening.current = first === last ? last : null;
     setCwd(first ?? fallbackDir());
+    // The list was cleared: load it even when the folder is the same as before (another project
+    // with the same destination, say), or it would wait on "Loading…" for good.
+    setReload((n) => n + 1);
   }, [host?.id, isConnected, isReconnecting, rememberAs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A folder asked for from outside, once its server is connected (after the effect above, so it wins).
@@ -243,7 +246,10 @@ export function ServerPane({
         const alive = await api.connected().then((ids) => ids.includes(host.id), () => false);
         if (!current) return;
         if (!alive) {
-          void refreshConnections();
+          await refreshConnections();
+          // Back already (it reconnected meanwhile): nothing else will reload it, so try again.
+          const back = await api.connected().then((ids) => ids.includes(host.id), () => false);
+          if (current && back) setReload((n) => n + 1);
           return;
         }
         // The folder from last time is gone (or can't be opened): start from the usual place.
