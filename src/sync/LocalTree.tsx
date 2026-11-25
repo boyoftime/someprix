@@ -14,6 +14,8 @@ import {
   FilePen,
   Info,
   ListTree,
+  PencilLine,
+  Trash2,
   Undo2,
   Upload,
 } from "lucide-react";
@@ -22,11 +24,13 @@ import { errorMessage, useAppData } from "../state/AppData";
 import { useContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { Loading } from "../ui/Loading";
 import { PropertiesDialog } from "../ui/PropertiesDialog";
+import { RenameRow } from "../ui/RenameRow";
+import { DeleteDialog } from "./DeleteDialog";
 import { useListSelection } from "../ui/useListSelection";
 import { useTypeAhead } from "../ui/useTypeAhead";
 import { useOpenInEditor } from "../editor/EditorProvider";
 import { isTextFile } from "../editor/languages";
-import { fileManager } from "../lib/platform";
+import { fileManager, trashName } from "../lib/platform";
 
 type Row = LocalEntry & { deleted?: boolean };
 /** A row as it's showing: the entry and its change, if any. */
@@ -91,6 +95,15 @@ export function LocalTree({
   const typeAhead = useTypeAhead();
   // What the Properties dialog shows (full paths), while it's open.
   const [propsFor, setPropsFor] = useState<{ name: string; path: string; isDir: boolean }[] | null>(null);
+  // The row being renamed (its path), while its name is in a box; and what the delete dialog asks about.
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<{ name: string; path: string; isDir: boolean }[] | null>(null);
+  /** Rows that are still here (not deletions waiting to be pushed): only they can be renamed or deleted. */
+  const present = (targets: Shown[]) => targets.filter((t) => !t.row.deleted && t.kind !== "deleted");
+  const askDelete = (targets: Shown[]) => {
+    const here = present(targets);
+    if (here.length) setToDelete(here.map(({ row }) => ({ name: row.name, path: localPath(root, row.path), isDir: row.isDir })));
+  };
   /** Properties for rows that still exist (deleted ones are only in the change list). */
   const showProperties = (targets: Shown[]) => {
     const existing = targets.filter((t) => !t.row.deleted && t.kind !== "deleted");
@@ -207,6 +220,22 @@ export function LocalTree({
     );
   };
 
+  /** Renames a row where it is; an open folder stays open, and an excluded one stays excluded (the
+   *  old name too, so its going doesn't become a deletion to push). */
+  const rename = async (row: Row, name: string) => {
+    const renamed = await api.renameLocal(localPath(root, row.path), name);
+    const newName = renamed.split(/[\\/]/).pop() ?? name;
+    const slash = row.path.lastIndexOf("/");
+    const moved = slash < 0 ? newName : `${row.path.slice(0, slash)}/${newName}`;
+    const carry = (path: string) => (path === row.path ? moved : path.startsWith(`${row.path}/`) ? moved + path.slice(row.path.length) : path);
+    setExpanded((set) => new Set([...set].map(carry)));
+    if (excluded.includes(row.path)) onExclude([moved], true);
+    setRenaming(null);
+    only(moved);
+    void load(["", ...[...expandedRef.current].map(carry)]);
+    body.current?.focus();
+  };
+
   const toggle = (row: Row) => {
     const open = expanded.has(row.path);
     setExpanded((set) => {
@@ -289,6 +318,9 @@ export function LocalTree({
         icon: Copy,
         onSelect: () => attempt(writeText(targets.map((t) => t.row.path).join("\n"))),
       },
+      ...(present(targets).length
+        ? (["separator", { label: `Delete ${present(targets).length} items`, icon: Trash2, onSelect: () => askDelete(targets), danger: true }] as MenuItem[])
+        : []),
       "separator",
       { label: "Properties", icon: Info, onSelect: () => showProperties(targets) },
     ];
@@ -338,13 +370,28 @@ export function LocalTree({
       "separator",
       { label: "Copy path", icon: Copy, onSelect: () => attempt(writeText(full)) },
       { label: "Copy relative path", icon: Copy, onSelect: () => attempt(writeText(row.path)) },
+      ...(!gone
+        ? ([
+            "separator",
+            { label: "Rename", icon: PencilLine, onSelect: () => setRenaming(row.path), shortcut: "F2" },
+            { label: "Delete", icon: Trash2, onSelect: () => askDelete(targets), danger: true, shortcut: "Del" },
+          ] as MenuItem[])
+        : []),
       "separator",
       { label: "Properties", icon: Info, onSelect: () => showProperties(targets), disabled: gone },
     ];
   };
 
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === "Enter" && event.altKey && selected.size) {
+    if ((event.target as HTMLElement).closest("input, textarea")) return;
+    const picked = () => [...selected].flatMap((path) => shown.get(path) ?? []);
+    if (event.key === "F2" && selected.size === 1 && present(picked()).length === 1) {
+      event.preventDefault();
+      setRenaming([...selected][0]);
+    } else if (event.key === "Delete" && present(picked()).length) {
+      event.preventDefault();
+      askDelete(picked());
+    } else if (event.key === "Enter" && event.altKey && selected.size) {
       event.preventDefault();
       showProperties([...selected].flatMap((path) => shown.get(path) ?? []));
     } else if (event.key === "a" && (event.ctrlKey || event.metaKey)) {
@@ -368,6 +415,34 @@ export function LocalTree({
           : undefined
         : fileKinds.get(row.path);
       shown.set(row.path, { row, kind });
+      if (row.path === renaming) {
+        return (
+          <li key={row.path} role="none">
+            <RenameRow
+              className="tree-row"
+              style={{ paddingLeft: 10 + depth * 16 }}
+              name={row.name}
+              isDir={row.isDir}
+              icon={
+                <>
+                  <span className="tree-chevron" aria-hidden="true" />
+                  {row.isDir ? (
+                    <Folder size={16} strokeWidth={1.75} className="tree-icon folder" />
+                  ) : (
+                    <File size={16} strokeWidth={1.75} className="tree-icon" />
+                  )}
+                </>
+              }
+              onRename={(name) => rename(row, name)}
+              onCancel={() => {
+                setRenaming(null);
+                body.current?.focus();
+              }}
+            />
+            {open && <ul role="group">{renderRows(row.path, depth + 1)}</ul>}
+          </li>
+        );
+      }
       return (
         <li key={row.path} role="none">
           <button
@@ -455,6 +530,22 @@ export function LocalTree({
     {/* Beside the list, not in it: clicks and keys in the dialog stay out of the list. */}
     {propsFor && (
       <PropertiesDialog items={propsFor} load={() => api.localProperties(propsFor.map((i) => i.path))} onClose={() => setPropsFor(null)} />
+    )}
+    {toDelete && (
+      <DeleteDialog
+        place="this computer"
+        items={toDelete}
+        recycle
+        removeOne={(path) => api.trashLocal([path])}
+        onClose={() => setToDelete(null)}
+        onFailed={() => void load(["", ...expandedRef.current])}
+        onDeleted={() => {
+          notify(`Moved to ${trashName}: ${toDelete.length === 1 ? toDelete[0].name : `${toDelete.length} items`}`);
+          setToDelete(null);
+          clear();
+          void load(["", ...expandedRef.current]);
+        }}
+      />
     )}
     </>
   );

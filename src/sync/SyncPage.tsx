@@ -176,6 +176,7 @@ export function SyncPage({ requestedHostId, onRequestHandled, onShow }: SyncPage
         // Each project has its own place on the server: its destination, else where it was last.
         rememberAs={project ? `sync.${project.root}` : "sync"}
         startFirst
+        renames
         markedDir={destination}
         folderMenu={pushHere}
         footer={destinationFooter}

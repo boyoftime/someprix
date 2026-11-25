@@ -80,7 +80,7 @@ type ServerPaneProps = {
   startFirst?: boolean;
   /** A folder to go to now (SFTP following a paired local folder); `fallback` if it can't be opened. */
   goTo?: GoTo | null;
-  /** Files and folders can be renamed here (SFTP; Sync leaves names to the project). */
+  /** Files and folders can be renamed here (with the menu, or F2). */
   renames?: boolean;
 };
 

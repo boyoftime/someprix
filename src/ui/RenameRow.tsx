@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { errorMessage } from "../state/AppData";
 
 /**
@@ -12,6 +12,8 @@ export function RenameRow({
   icon,
   onRename,
   onCancel,
+  className = "remote-row",
+  style,
 }: {
   name: string;
   isDir: boolean;
@@ -19,6 +21,9 @@ export function RenameRow({
   /** Renames it; a failure's message shows beside the box. */
   onRename: (name: string) => Promise<void>;
   onCancel: () => void;
+  /** The row style it takes the place of (a list's, or a tree's, with its indent). */
+  className?: string;
+  style?: CSSProperties;
 }) {
   const [value, setValue] = useState(name);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +63,8 @@ export function RenameRow({
 
   return (
     <form
-      className="remote-row rename-row"
+      className={`${className} rename-row`}
+      style={style}
       onSubmit={(event) => {
         event.preventDefault();
         void commit();
