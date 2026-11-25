@@ -15,6 +15,7 @@ import {
   House,
   Laptop,
   Link2,
+  PencilLine,
   RefreshCw,
   Trash2,
   Unlink,
@@ -28,6 +29,7 @@ import { useContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { Loading } from "../ui/Loading";
 import { DeleteDialog } from "../sync/DeleteDialog";
 import { PropertiesDialog } from "../ui/PropertiesDialog";
+import { RenameRow } from "../ui/RenameRow";
 import { useDrag } from "./drag";
 import { useListSelection } from "../ui/useListSelection";
 import { useSpin } from "../ui/useSpin";
@@ -165,6 +167,8 @@ export function LocalBrowser({
   const [toDelete, setToDelete] = useState<LocalFsEntry[] | null>(null);
   // What the Properties dialog shows, while it's open.
   const [propsFor, setPropsFor] = useState<LocalFsEntry[] | null>(null);
+  // The item being renamed (its path), while its name is in a box.
+  const [renaming, setRenaming] = useState<string | null>(null);
   // Windows' list of drives (""), above every drive root.
   const atDrives = isWindows && path === "";
   const up = path === null ? null : parentLocal(path);
@@ -275,7 +279,17 @@ export function LocalBrowser({
     }
     setEntries(null);
     clear();
+    setRenaming(null);
     setPath(next);
+  };
+
+  /** Renames an item where it is, then selects and lights it up under its new name. */
+  const rename = async (entry: LocalFsEntry, name: string) => {
+    const renamed = await api.renameLocal(entry.path, name);
+    setRenaming(null);
+    reveal.current = [renamed];
+    setReload((n) => n + 1);
+    body.current?.focus();
   };
 
   const activate = (entry: LocalFsEntry) => {
@@ -318,6 +332,9 @@ export function LocalBrowser({
       ...(!atDrives
         ? ([
             "separator",
+            ...(targets.length === 1
+              ? [{ label: "Rename", icon: PencilLine, onSelect: () => setRenaming(entry.path), shortcut: "F2" } as MenuItem]
+              : []),
             {
               label: targets.length === 1 ? "Delete" : `Delete ${targets.length} items`,
               icon: Trash2,
@@ -364,7 +381,12 @@ export function LocalBrowser({
   };
 
   const onListKey = (event: KeyboardEvent) => {
-    if (event.key === "Enter" && event.altKey && !atDrives && chosen.length) {
+    // Typing a new name isn't a command for the list.
+    if ((event.target as HTMLElement).closest("input, textarea")) return;
+    if (event.key === "F2" && !atDrives && chosen.length === 1) {
+      event.preventDefault();
+      setRenaming(chosen[0].path);
+    } else if (event.key === "Enter" && event.altKey && !atDrives && chosen.length) {
       event.preventDefault();
       setPropsFor(chosen);
     } else if (event.key === "Delete" && !atDrives && chosen.length) {
@@ -456,7 +478,27 @@ export function LocalBrowser({
           <p className="pane-message muted">Empty folder</p>
         ) : (
           <ul className="remote-list" aria-label="Files on this computer" aria-multiselectable="true">
-            {entries.map((entry) => (
+            {entries.map((entry) =>
+              entry.path === renaming ? (
+                <li key={entry.path}>
+                  <RenameRow
+                    name={entry.name}
+                    isDir={entry.isDir}
+                    icon={
+                      entry.isDir ? (
+                        <Folder size={16} strokeWidth={1.75} className="tree-icon folder" />
+                      ) : (
+                        <File size={16} strokeWidth={1.75} className="tree-icon" />
+                      )
+                    }
+                    onRename={(name) => rename(entry, name)}
+                    onCancel={() => {
+                      setRenaming(null);
+                      body.current?.focus();
+                    }}
+                  />
+                </li>
+              ) : (
               <li key={entry.path}>
                 <button
                   type="button"
@@ -496,7 +538,8 @@ export function LocalBrowser({
                   <span className="remote-size">{entry.isDir ? "" : formatSize(entry.size)}</span>
                 </button>
               </li>
-            ))}
+              ),
+            )}
           </ul>
         )}
         {box && (

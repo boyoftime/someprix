@@ -385,6 +385,7 @@ export function SftpPage({ shown }: { shown: boolean }) {
           onAddHost={() => setAddingHost(true)}
           rememberAs="sftp"
           goTo={goTo}
+          renames
           folderMenu={uploadHere}
           acceptsDrops
           download={{

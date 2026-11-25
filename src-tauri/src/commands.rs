@@ -197,6 +197,49 @@ pub async fn ssh_create_file(state: State<'_, AppState>, host_id: String, path: 
     state.ssh.get(&host_id).await?.create_file(&path).await
 }
 
+/// Renames a file or folder on the server, in place. Refuses to replace something already there.
+/// Returns the new path.
+#[tauri::command]
+pub async fn ssh_rename(state: State<'_, AppState>, host_id: String, path: String, name: String) -> Result<String, String> {
+    if let Some(problem) = name_problem(&name, false) {
+        return Err(problem);
+    }
+    let parent = match path.trim_end_matches('/').rsplit_once('/') {
+        Some(("", _)) | None => "/",
+        Some((dir, _)) => dir,
+    };
+    let to = ssh::join(parent, &name);
+    if to == path {
+        return Ok(path);
+    }
+    let conn = state.ssh.get(&host_id).await?;
+    if conn.sftp.try_exists(to.as_str()).await.unwrap_or(false) {
+        return Err("That name is already taken here".into());
+    }
+    conn.rename(&path, &to).await?;
+    Ok(to)
+}
+
+/// Why a new name won't do, if it won't: empty, "." or "..", or holding a character the place
+/// doesn't allow ("/" anywhere; on Windows, this computer's own list too).
+fn name_problem(name: &str, local: bool) -> Option<String> {
+    if name.trim().is_empty() {
+        return Some("Name required".into());
+    }
+    if name == "." || name == ".." {
+        return Some("That name can't be used".into());
+    }
+    let windows = local && cfg!(windows);
+    let bad: &[char] = if windows { &['/', '\\', '<', '>', ':', '"', '|', '?', '*'] } else { &['/'] };
+    if let Some(c) = name.chars().find(|c| bad.contains(c) || c.is_control()) {
+        return Some(format!("A name can't contain {c}"));
+    }
+    if windows && (name.ends_with('.') || name.ends_with(' ')) {
+        return Some("On Windows a name can't end with a dot or a space".into());
+    }
+    None
+}
+
 // ---------- Terminal ----------
 
 /// Opens a shell on a connected host in a pseudo-terminal of `cols` x `rows`, in `start_dir` if
@@ -1553,6 +1596,28 @@ pub fn local_downloads(app: AppHandle) -> String {
         .download_dir()
         .map(|dir| dir.to_string_lossy().into_owned())
         .unwrap_or_else(|_| files::under(Path::new(&files::home()), "Downloads").to_string_lossy().into_owned())
+}
+
+/// Renames a file or folder on this computer, in place. Refuses to replace something already
+/// there; changing only capitals (readme to README) is still the same item, where names ignore
+/// case. Returns the new path.
+#[tauri::command]
+pub async fn local_rename(path: String, name: String) -> Result<String, String> {
+    if let Some(problem) = name_problem(&name, true) {
+        return Err(problem);
+    }
+    let from = PathBuf::from(&path);
+    let parent = from.parent().ok_or("A drive can't be renamed")?;
+    let to = parent.join(&name);
+    if to == from {
+        return Ok(path);
+    }
+    let same_item = cfg!(any(windows, target_os = "macos")) && to.to_string_lossy().to_lowercase() == from.to_string_lossy().to_lowercase();
+    if to.exists() && !same_item {
+        return Err("That name is already taken here".into());
+    }
+    std::fs::rename(&from, &to).map_err(|e| format!("Rename failed: {e}"))?;
+    Ok(to.to_string_lossy().into_owned())
 }
 
 /// Moves files and folders on this computer to the Recycle Bin (Trash), where they can be restored.

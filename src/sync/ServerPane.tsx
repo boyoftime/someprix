@@ -21,6 +21,7 @@ import {
   FilePlus,
   FolderPlus,
   Info,
+  PencilLine,
   Plug,
   Plus,
   RefreshCw,
@@ -44,6 +45,7 @@ import { useSpin } from "../ui/useSpin";
 import { useTypeAhead } from "../ui/useTypeAhead";
 import { DeleteDialog } from "./DeleteDialog";
 import { PropertiesDialog } from "../ui/PropertiesDialog";
+import { RenameRow } from "../ui/RenameRow";
 import { useOpenInEditor } from "../editor/EditorProvider";
 import { useOpenTerminal } from "../terminal/TerminalProvider";
 import { forget, remember, remembered } from "../lib/storage";
@@ -78,6 +80,8 @@ type ServerPaneProps = {
   startFirst?: boolean;
   /** A folder to go to now (SFTP following a paired local folder); `fallback` if it can't be opened. */
   goTo?: GoTo | null;
+  /** Files and folders can be renamed here (SFTP; Sync leaves names to the project). */
+  renames?: boolean;
 };
 
 /** A request to open a server folder; each new `seq` is a new request. */
@@ -109,6 +113,7 @@ export function ServerPane({
   rememberAs,
   startFirst = false,
   goTo = null,
+  renames = false,
 }: ServerPaneProps) {
   const { hosts, connected, connecting, reconnecting, connect, disconnect, homes, refreshConnections, notify, lastPush } =
     useAppData();
@@ -303,7 +308,20 @@ export function ServerPane({
     }
     setEntries(null);
     clear();
+    setRenaming(null);
     setCwd(path);
+  };
+
+  // The item being renamed (its path), while its name is in a box.
+  const [renaming, setRenaming] = useState<string | null>(null);
+  /** Renames an item where it is, then selects it under its new name. */
+  const rename = async (entry: RemoteEntry, name: string) => {
+    if (!host) return;
+    const renamed = await api.renameRemote(host.id, entry.path, name);
+    setRenaming(null);
+    only(renamed);
+    setReload((n) => n + 1);
+    bodyRef.current?.focus();
   };
 
   /** Folders open in the list; text files in the editor. */
@@ -381,6 +399,7 @@ export function ServerPane({
       ...take,
       { label: "Copy path", icon: Copy, onSelect: () => copy(entry.path) },
       "separator",
+      ...(renames ? [{ label: "Rename", icon: PencilLine, onSelect: () => setRenaming(entry.path), shortcut: "F2" }] : []),
       remove,
       "separator",
       properties,
@@ -390,7 +409,10 @@ export function ServerPane({
   const onListKey = (event: KeyboardEvent) => {
     // Typing in the new folder or file name box isn't a command for the list.
     if ((event.target as HTMLElement).closest("input, textarea")) return;
-    if (event.key === "Enter" && event.altKey && chosen.length) {
+    if (event.key === "F2" && renames && chosen.length === 1) {
+      event.preventDefault();
+      setRenaming(chosen[0].path);
+    } else if (event.key === "Enter" && event.altKey && chosen.length) {
       event.preventDefault();
       setPropsFor(chosen);
     } else if (event.key === "Delete" && chosen.length) {
@@ -604,7 +626,27 @@ export function ServerPane({
           <p className="pane-message muted">Empty folder</p>
         ) : (
           <ul className="remote-list" aria-label="Server files" aria-multiselectable="true" ref={listRef}>
-            {entries.map((entry) => (
+            {entries.map((entry) =>
+              entry.path === renaming ? (
+                <li key={entry.path}>
+                  <RenameRow
+                    name={entry.name}
+                    isDir={entry.isDir}
+                    icon={
+                      entry.isDir ? (
+                        <Folder size={16} strokeWidth={1.75} className="tree-icon folder" />
+                      ) : (
+                        <File size={16} strokeWidth={1.75} className="tree-icon" />
+                      )
+                    }
+                    onRename={(name) => rename(entry, name)}
+                    onCancel={() => {
+                      setRenaming(null);
+                      bodyRef.current?.focus();
+                    }}
+                  />
+                </li>
+              ) : (
               <li key={entry.path}>
                 <button
                   type="button"
@@ -649,7 +691,8 @@ export function ServerPane({
                   <span className="remote-size">{entry.isDir ? "" : formatSize(entry.size)}</span>
                 </button>
               </li>
-            ))}
+              ),
+            )}
           </ul>
         )}
         {box && (

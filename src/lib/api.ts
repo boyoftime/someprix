@@ -278,6 +278,8 @@ export const api = {
   connected: () => call<string[]>("ssh_connected"),
   listRemote: (hostId: string, path: string) => call<RemoteEntry[]>("ssh_list", { hostId, path }),
   makeRemoteDir: (hostId: string, path: string) => call<void>("ssh_mkdir", { hostId, path }),
+  /** Renames a file or folder on the server, in place; returns its new path. */
+  renameRemote: (hostId: string, path: string, name: string) => call<string>("ssh_rename", { hostId, path, name }),
   /** Creates an empty file; fails rather than replace an existing one. */
   createRemoteFile: (hostId: string, path: string) => call<void>("ssh_create_file", { hostId, path }),
   /** Deletes files and folders (with everything inside); returns how many items went. */
@@ -375,6 +377,8 @@ export const api = {
   localDownloads: () => call<string>("local_downloads"),
   /** Moves files and folders on this computer to the Recycle Bin (Trash). */
   trashLocal: (paths: string[]) => call<number>("local_delete", { paths }),
+  /** Renames a file or folder on this computer, in place; returns its new path. */
+  renameLocal: (path: string, name: string) => call<string>("local_rename", { path, name }),
   /** Downloads server files and folders into a folder on this computer. */
   download: (hostId: string, sources: string[], localDir: string, fast = false) =>
     call<UploadReport>("sftp_download", { hostId, sources, localDir, fast }),
